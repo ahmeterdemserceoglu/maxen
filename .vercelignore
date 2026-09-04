@@ -1,0 +1,11 @@
+.vercel
+.expo
+.next
+android
+ios
+node_modules
+dist
+build
+.git
+*.apk
+*.aab

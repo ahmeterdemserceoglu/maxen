@@ -1,0 +1,8 @@
+name = "maxen-stream-api"
+main = "cloudflare-worker.js"
+compatibility_date = "2024-01-01"
+
+[env.production]
+routes = [
+  { pattern = "https://maxen.sbs/api/*", zone_name = "maxen.sbs" }
+]

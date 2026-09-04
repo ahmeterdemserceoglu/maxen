@@ -1,0 +1,74 @@
+{
+  "expo": {
+    "name": "maxen",
+    "slug": "maxen",
+    "version": "10.6.2",
+    "orientation": "default",
+    "scheme": "maxen",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.maxen.app",
+      "buildNumber": "19",
+      "infoPlist": {
+        "UIBackgroundModes": [
+          "audio"
+        ],
+        "NSAppTransportSecurity": {
+          "NSAllowsArbitraryLoads": true
+        },
+        "NSMicrophoneUsageDescription": "Maxen içeriklerinde sesli arama yapmak için mikrofonunuza erişim gereklidir."
+      }
+    },
+    "splash": {
+      "image": "./assets/images/transparent.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#000000"
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "static",
+      "favicon": "./assets/images/transparent.png"
+    },
+    "android": {
+      "package": "com.maxen.app",
+      "versionCode": 19,
+      "isTV": true,
+      "usesCleartextTraffic": true,
+      "predictiveBackGestureEnabled": false,
+      "softwareKeyboardLayoutMode": "pan",
+      "permissions": [
+        "INTERNET",
+        "ACCESS_NETWORK_STATE",
+        "WAKE_LOCK",
+        "VIBRATE",
+        "FOREGROUND_SERVICE",
+        "FOREGROUND_SERVICE_DATA_SYNC",
+        "POST_NOTIFICATIONS"
+      ]
+    },
+    "plugins": [
+      "expo-router",
+      "expo-font",
+      [
+        "expo-video",
+        {
+          "supportsPictureInPicture": true,
+          "supportsBackgroundPlayback": true
+        }
+      ],
+      "expo-screen-orientation",
+      "./withAndroidTV"
+    ],
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "16e0ba87-c23e-4645-921f-9ea80ce98675"
+      }
+    }
+  }
+}

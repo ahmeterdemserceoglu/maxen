@@ -1,0 +1,23 @@
+{
+  "version": 2,
+  "buildCommand": "npm run build:web",
+  "outputDirectory": "dist",
+  "rewrites": [
+    {
+      "source": "/api/tmdb/:path*",
+      "destination": "/api/tmdb?path=/:path*"
+    },
+    {
+      "source": "/api/stream",
+      "destination": "/api/stream.js"
+    },
+    {
+      "source": "/api/intro",
+      "destination": "/api/intro.js"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}

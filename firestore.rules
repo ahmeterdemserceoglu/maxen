@@ -1,0 +1,108 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        request.auth.token.admin == true ||
+        (request.auth.token.email != null && request.auth.token.email == 'admin@maxen.tv')
+      );
+    }
+
+    // 1. Kullanıcıya özel ana doküman, profil ve tüm alt koleksiyon verileri
+    // (continueWatching, favorites, watchLater, ratings, profiles vb.)
+    match /users/{userId} {
+      allow read: if true;
+      allow write: if isOwner(userId) || isSignedIn();
+
+      match /profiles/{profileId} {
+        allow read: if true;
+        allow write: if isOwner(userId) || isSignedIn();
+
+        match /{document=**} {
+          allow read: if true;
+          allow write: if isOwner(userId) || isSignedIn();
+        }
+      }
+
+      match /{document=**} {
+        allow read: if true;
+        allow write: if isOwner(userId) || isSignedIn();
+      }
+    }
+
+    // 2. Benzersiz Kullanıcı Adları İndeksi (/usernames)
+    match /usernames/{username} {
+      allow read: if true;
+      allow create: if isSignedIn() && request.resource.data.uid == request.auth.uid;
+      allow update, delete: if isSignedIn() && resource.data.uid == request.auth.uid;
+    }
+
+    // 3. Canlı İzleme & Aktivite Takibi (/presence)
+    match /presence/{userId} {
+      allow read: if isSignedIn();
+      allow write: if isOwner(userId);
+    }
+
+    // 4. Arkadaşlık İlişkileri & İstekleri (/friends)
+    match /friends/{userId}/userFriends/{friendId} {
+      allow read: if isOwner(userId) || (isSignedIn() && request.auth.uid == friendId);
+      allow create, update: if isOwner(userId) || (isSignedIn() && request.auth.uid == friendId);
+      allow delete: if isOwner(userId) || (isSignedIn() && request.auth.uid == friendId);
+    }
+
+    // 5. Watch Party Canlı Davetleri (/invites)
+    match /invites/{userId}/partyInvites/{inviteId} {
+      allow read, update, delete: if isOwner(userId);
+      allow create: if isSignedIn();
+    }
+
+    // 6. Shorts / Keşfet Fragmanları
+    match /shorts/{shortId} {
+      allow read: if true;
+      allow create, update: if isSignedIn();
+      allow delete: if isSignedIn() && isAdmin();
+    }
+
+    // 7. Android TV Anında Giriş / Eşleşme Oturumları (QR & PIN Login)
+    match /tv_sessions/{sessionId} {
+      allow read, create: if true;
+      allow update: if true;
+      allow delete: if true;
+    }
+
+    // 7b. Aynı ağdaki TV'de oynat ve Sanal TV Kumandası (cihaz kaydı, komutlar ve eylemler)
+    match /tv_devices/{deviceId} {
+      allow read, write: if true;
+
+      match /{document=**} {
+        allow read, write: if true;
+      }
+    }
+
+    // 8. Birlikte İzle / Watch Party Odaları (Gerçek zamanlı senkronizasyon & sohbet)
+    match /watch_parties/{partyId} {
+      allow read, create: if true;
+      allow update: if true;
+      allow delete: if isSignedIn();
+    }
+
+    // 9. 1'e 1 Doğrudan Mesajlaşma (Direct Messaging)
+    match /direct_conversations/{convId} {
+      allow read, write: if isSignedIn();
+
+      match /messages/{messageId} {
+        allow read, write: if isSignedIn();
+      }
+    }
+  }
+}
