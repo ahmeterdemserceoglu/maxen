@@ -68,6 +68,7 @@ export function PlayerBottomBar({
   onOpenEpisodesMenu,
   prolongControls,
 }: PlayerBottomBarProps) {
+  const isTV = Platform.isTV;
 
   const renderMobileControls = () => (
     <View style={styles.controlRow}>
@@ -89,6 +90,7 @@ export function PlayerBottomBar({
           focusedStyle={{ transform: [{ scale: 1.15 }], backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 20 }}
           onFocus={prolongControls}
           onPress={onPlayPause}
+          accessibilityLabel={isPlaying ? 'Duraklat' : 'Oynat'}
         >
           <Ionicons name={isPlaying ? 'pause' : 'play'} size={24} color="#fff" />
         </TVFocusable>
@@ -155,6 +157,17 @@ export function PlayerBottomBar({
         >
           <Ionicons name="language-outline" size={24} color="#fff" />
         </TVFocusable>
+        {!isMovie && onOpenEpisodesMenu && (
+          <TVFocusable
+            style={styles.ctrlBtn}
+            focusedStyle={{ transform: [{ scale: 1.15 }], backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 20 }}
+            onFocus={prolongControls}
+            onPress={onOpenEpisodesMenu}
+            accessibilityLabel="Bölümler"
+          >
+            <Ionicons name="albums-outline" size={22} color="#fff" />
+          </TVFocusable>
+        )}
         <TVFocusable
           style={styles.ctrlBtn}
           focusedStyle={{ transform: [{ scale: 1.15 }], backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 20 }}
@@ -169,8 +182,7 @@ export function PlayerBottomBar({
 
   const renderTVControls = () => (
     <View style={styles.tvControlsContainer}>
-      {/* Top row: Playback controls */}
-      <View style={styles.tvPlaybackRow}>
+      <View style={styles.tvActionRow}>
         <TVFocusable
           style={styles.tvCtrlBtn}
           focusedStyle={styles.tvCtrlBtnFocused}
@@ -184,6 +196,7 @@ export function PlayerBottomBar({
         <TVFocusable
           hasTVPreferredFocus={controlsVisible}
           style={styles.tvPlayBtn}
+          accessibilityLabel={isPlaying ? 'Duraklat' : 'Oynat'}
           focusedStyle={styles.tvPlayBtnFocused}
           onFocus={prolongControls}
           onPress={onPlayPause}
@@ -202,82 +215,40 @@ export function PlayerBottomBar({
           <Text style={styles.tvCtrlBtnTxt}>+10s</Text>
           <Ionicons name="play-forward" size={20} color="#fff" />
         </TVFocusable>
+
+        {!isMovie && onOpenEpisodesMenu && (
+          <TVFocusable style={styles.tvSettingBtn} focusedStyle={styles.tvSettingBtnFocused} onFocus={prolongControls} onPress={onOpenEpisodesMenu}>
+            <Ionicons name="list-outline" size={20} color="#fff" style={styles.tvSettingIcon} />
+            <Text style={styles.tvSettingTxt}>Bölümler</Text>
+          </TVFocusable>
+        )}
+
+        <TVFocusable style={styles.tvSettingBtn} focusedStyle={styles.tvSettingBtnFocused} onFocus={prolongControls} onPress={onOpenAudioMenu}>
+          <Ionicons name="volume-high-outline" size={20} color="#fff" style={styles.tvSettingIcon} />
+          <Text style={styles.tvSettingTxt}>Ses ve Dil</Text>
+        </TVFocusable>
+
+        <TVFocusable style={styles.tvSettingBtn} focusedStyle={styles.tvSettingBtnFocused} onFocus={prolongControls} onPress={onOpenSubtitleMenu}>
+          <Ionicons name="chatbubbles-outline" size={20} color="#fff" style={styles.tvSettingIcon} />
+          <Text style={styles.tvSettingTxt}>Altyazı</Text>
+        </TVFocusable>
+
+        {onOpenQualityMenu && (
+          <TVFocusable style={styles.tvSettingBtn} focusedStyle={styles.tvSettingBtnFocused} onFocus={prolongControls} onPress={onOpenQualityMenu}>
+            <Ionicons name="options-outline" size={20} color="#fff" style={styles.tvSettingIcon} />
+            <Text style={styles.tvSettingTxt}>{selectedQuality === 'auto' || !selectedQuality ? 'Kalite' : selectedQuality.toUpperCase()}</Text>
+          </TVFocusable>
+        )}
+
+        <TVFocusable style={styles.tvIconBtn} focusedStyle={styles.tvSettingBtnFocused} onFocus={prolongControls} onPress={onCycleSpeed} accessibilityLabel="Oynatma hızı">
+          <Text style={styles.tvSpeedTxt}>{playbackRate}x</Text>
+        </TVFocusable>
+
+        <TVFocusable style={styles.tvIconBtn} focusedStyle={styles.tvSettingBtnFocused} onFocus={prolongControls} onPress={onToggleContentFit} accessibilityLabel="Ekrana sığdır">
+          <Ionicons name="expand-outline" size={22} color="#fff" />
+        </TVFocusable>
       </View>
-
-      {/* Bottom row: Settings & Episodes & End Time */}
-      <View style={styles.tvSettingsRow}>
-        <View style={styles.tvSettingsLeft}>
-          <TVFocusable
-            style={styles.tvSettingBtn}
-            focusedStyle={styles.tvSettingBtnFocused}
-            onFocus={prolongControls}
-            onPress={onOpenSubtitleMenu}
-          >
-            <Ionicons name="chatbubbles-outline" size={18} color="#fff" style={styles.tvSettingIcon} />
-            <Text style={styles.tvSettingTxt}>Altyazı</Text>
-          </TVFocusable>
-
-          <TVFocusable
-            style={styles.tvSettingBtn}
-            focusedStyle={styles.tvSettingBtnFocused}
-            onFocus={prolongControls}
-            onPress={onOpenAudioMenu}
-          >
-            <Ionicons name="musical-notes-outline" size={18} color="#fff" style={styles.tvSettingIcon} />
-            <Text style={styles.tvSettingTxt}>Ses</Text>
-          </TVFocusable>
-
-          {onOpenEpisodesMenu && !isMovie && (
-            <TVFocusable
-              style={styles.tvSettingBtn}
-              focusedStyle={styles.tvSettingBtnFocused}
-              onFocus={prolongControls}
-              onPress={onOpenEpisodesMenu}
-            >
-              <Ionicons name="list-outline" size={18} color="#fff" style={styles.tvSettingIcon} />
-              <Text style={styles.tvSettingTxt}>Bölümler</Text>
-            </TVFocusable>
-          )}
-
-          {onOpenQualityMenu && (
-            <TVFocusable
-              style={styles.tvSettingBtn}
-              focusedStyle={styles.tvSettingBtnFocused}
-              onFocus={prolongControls}
-              onPress={onOpenQualityMenu}
-            >
-              <Ionicons name="options-outline" size={18} color="#fff" style={styles.tvSettingIcon} />
-              <Text style={styles.tvSettingTxt}>
-                {selectedQuality === 'auto' || !selectedQuality ? 'Kalite' : selectedQuality.toUpperCase()}
-              </Text>
-            </TVFocusable>
-          )}
-
-          <TVFocusable
-            style={styles.tvSettingBtn}
-            focusedStyle={styles.tvSettingBtnFocused}
-            onFocus={prolongControls}
-            onPress={onCycleSpeed}
-          >
-            <Ionicons name="speedometer-outline" size={18} color="#fff" style={styles.tvSettingIcon} />
-            <Text style={styles.tvSettingTxt}>{playbackRate}x</Text>
-          </TVFocusable>
-
-          <TVFocusable
-            style={styles.tvSettingBtn}
-            focusedStyle={styles.tvSettingBtnFocused}
-            onFocus={prolongControls}
-            onPress={onToggleContentFit}
-          >
-            <Ionicons name="expand-outline" size={18} color="#fff" style={styles.tvSettingIcon} />
-            <Text style={styles.tvSettingTxt}>Fit</Text>
-          </TVFocusable>
-        </View>
-
-        <View style={styles.tvSettingsRight}>
-          <Text style={styles.tvEndTimeTxt}>Bitiş: {endTime}</Text>
-        </View>
-      </View>
+      <Text style={styles.tvEndTimeTxt}>Bitiş: {endTime}</Text>
     </View>
   );
 
@@ -412,12 +383,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     width: '100%',
   },
-  tvPlaybackRow: {
+  tvActionRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 20,
-    marginBottom: 16,
+    gap: 12,
+    width: '100%',
   },
   tvCtrlBtn: {
     flexDirection: 'row',
@@ -460,28 +431,22 @@ const styles = StyleSheet.create({
     transform: [{ scale: 1.12 }],
     elevation: 14,
   },
-  tvSettingsRow: {
-    width: '100%',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  tvSettingsLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    flexWrap: 'wrap',
-  },
-  tvSettingsRight: {
-    alignItems: 'flex-end',
-  },
   tvSettingBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    height: 38,
-    paddingHorizontal: 14,
-    borderRadius: 19,
+    height: 52,
+    paddingHorizontal: 16,
+    borderRadius: 26,
     backgroundColor: 'rgba(255,255,255,0.1)',
+  },
+  tvIconBtn: {
+    minWidth: 52,
+    height: 52,
+    paddingHorizontal: 10,
+    borderRadius: 26,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   tvSettingBtnFocused: {
     backgroundColor: 'rgba(229, 9, 20, 0.25)',
@@ -494,12 +459,18 @@ const styles = StyleSheet.create({
   },
   tvSettingTxt: {
     color: '#fff',
-    fontSize: 13,
+    fontSize: 16,
     fontWeight: '600',
+  },
+  tvSpeedTxt: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '800',
   },
   tvEndTimeTxt: {
     color: 'rgba(255,255,255,0.7)',
     fontSize: 14,
     fontWeight: '600',
+    marginTop: 12,
   },
 });

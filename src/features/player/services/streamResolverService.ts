@@ -17,7 +17,10 @@ export interface ResolvedStreamResult {
   headers?: Record<string, string>;
   subtitles?: any[];
   isEmbed?: boolean;
+  audioLanguage?: string;
 }
+
+export const STREAM_AUDIO_LANGUAGES = ['tr', 'en', 'it', 'de', 'fr', 'es', 'pt', 'ru', 'ja', 'ko'] as const;
 
 export function isDirectStream(url: string | undefined | null): boolean {
   if (!url || typeof url !== 'string') return false;
@@ -203,7 +206,8 @@ export async function resolveVixSrcDirect({
     console.log(`[Fast-Fail Resolver] ✅ VixSrc Direct BAŞARILI! Akış: ${directUrl}`);
     return {
       streamUrl: directUrl,
-      provider: 'VixSrc Direct',
+      provider: audioLang ? `VixSrc Direct (${audioLang})` : 'VixSrc Direct',
+      audioLanguage: audioLang,
       headers: {
         Referer: 'https://vixsrc.to/',
         Origin: 'https://vixsrc.to',
@@ -214,6 +218,17 @@ export async function resolveVixSrcDirect({
   } finally {
     clearTimeout(timeoutId);
   }
+}
+
+/**
+ * Resolves language streams. VixSrc master m3u8 playlists contain embedded audio tracks
+ * directly (e.g. English, Italian). External VixSrc lang queries do not serve separate audio.
+ */
+export async function resolveVixSrcLanguageStreams(
+  _params: Omit<ResolverParams, 'cleanBaseUrl' | 'audioLang'>,
+  _languages: readonly string[] = STREAM_AUDIO_LANGUAGES
+): Promise<ResolvedStreamResult[]> {
+  return [];
 }
 
 /**

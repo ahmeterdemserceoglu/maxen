@@ -2,8 +2,8 @@ import React from 'react';
 import {
   View,
   ScrollView,
-  findNodeHandle,
 } from 'react-native';
+import { getTVNodeHandle } from '@/utils/tvNodeHandle';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { ThemedText } from '@/components/themed-text';
@@ -17,6 +17,7 @@ export interface CastMemberListProps {
   actorRefs?: any;
   playButtonRef?: any;
   genres?: string;
+  onFirstFocusableResolved?: (nodeId: number) => void;
   onSelectActor: (actor: any) => void;
 }
 
@@ -27,6 +28,7 @@ export function CastMemberList({
   actorRefs,
   playButtonRef,
   genres,
+  onFirstFocusableResolved,
   onSelectActor,
 }: CastMemberListProps) {
   if (!cast || cast.length === 0) return null;
@@ -38,40 +40,32 @@ export function CastMemberList({
    */
   if (isTV) {
     return (
-      <View style={styles.tvCastSection}>
-        <ThemedText style={styles.tvSectionLabel}>OYUNCULAR</ThemedText>
+      <View style={styles.tvSection}>
+        <ThemedText style={styles.tvSectionTitle}>Oyuncular & Ekip</ThemedText>
 
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
-          directionalLockEnabled
+          contentContainerStyle={styles.tvCastRow}
         >
-          {cast.map((actor, index) => (
+          {cast.slice(0, 15).map((actor, index) => (
             <TVFocusable
-              key={index}
-              ref={(ref) => {
+              key={`tv-actor-${actor.tmdbId ?? actor.name ?? index}`}
+              ref={(el) => {
                 if (actorRefs?.current) {
-                  actorRefs.current[index] = ref;
+                  actorRefs.current[index] = el;
+                }
+                if (index === 0) {
+                  const nodeId = getTVNodeHandle(el);
+                  if (nodeId) onFirstFocusableResolved?.(nodeId);
                 }
               }}
               onPress={() => onSelectActor(actor)}
               style={styles.tvActorCard}
               focusedStyle={styles.tvActorFocused}
-              nextFocusUp={
-                playButtonRef?.current
-                  ? findNodeHandle(playButtonRef.current) || undefined
-                  : undefined
-              }
-              nextFocusLeft={
-                index > 0 && actorRefs?.current?.[index - 1]
-                  ? findNodeHandle(actorRefs.current[index - 1]) || undefined
-                  : undefined
-              }
-              nextFocusRight={
-                index < cast.length - 1 && actorRefs?.current?.[index + 1]
-                  ? findNodeHandle(actorRefs.current[index + 1]) || undefined
-                  : undefined
-              }
+              nextFocusUp={getTVNodeHandle(playButtonRef)}
+              nextFocusLeft={index > 0 ? getTVNodeHandle(actorRefs?.current?.[index - 1]) : undefined}
+              nextFocusRight={index < cast.length - 1 ? getTVNodeHandle(actorRefs?.current?.[index + 1]) : undefined}
             >
               {({ focused }) => (
                 <>

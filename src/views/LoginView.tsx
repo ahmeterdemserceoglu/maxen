@@ -1,5 +1,5 @@
-import React from 'react';
-import { View, StyleSheet } from 'react-native';
+import React, { useEffect } from 'react';
+import { View, StyleSheet, Platform, BackHandler } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
 import { ThemedText } from '@/components/themed-text';
@@ -88,6 +88,16 @@ export function LoginView() {
     logoGlowAnim,
   } = useAuthScreenState();
 
+  useEffect(() => {
+    if (!Platform.isTV || screen === 'profiles' || screen === 'auth') return;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      setScreen(screen === 'forgot' ? 'auth' : screen === 'edit' ? 'manage' : 'profiles');
+      setLocalError(null);
+      return true;
+    });
+    return () => sub.remove();
+  }, [screen, setScreen, setLocalError]);
+
   if (!isFirebaseConfigured()) {
     return (
       <View style={[styles.rootBackground, styles.centerAll]}>
@@ -110,6 +120,8 @@ export function LoginView() {
       </View>
     );
   }
+
+
 
   // 1. Forgot password
   if (screen === 'forgot') {

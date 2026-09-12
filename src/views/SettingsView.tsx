@@ -1,3 +1,4 @@
+import { TVTouchable } from '@/components/TVTouchable';
 import { Image } from 'expo-image';
 import React, { useEffect, useState } from 'react';
 import {
@@ -138,6 +139,7 @@ export function SettingsView({ activeProfile, onChangeProfile }: SettingsViewPro
       style={[styles.container, { backgroundColor: isOledMode ? '#000000' : '#141414' }]}
       contentContainerStyle={[
         styles.scrollContent,
+        Platform.isTV && { width: '100%', maxWidth: 960, alignSelf: 'center', paddingTop: 28, paddingHorizontal: 40 },
         isDesktopWeb && {
           maxWidth: 820,
           width: '100%',
@@ -183,7 +185,7 @@ export function SettingsView({ activeProfile, onChangeProfile }: SettingsViewPro
       </View>
 
       <View style={[styles.section, isOledMode && { backgroundColor: '#050505', borderColor: '#1a1a1a' }]}>
-        {SETTINGS_ITEMS.map((item, idx) => (
+        {SETTINGS_ITEMS.filter(item => !Platform.isTV || !(item as any).isUsername).map((item, idx) => (
           <TVFocusable
             key={idx}
             style={[styles.settingRow, { borderBottomColor: 'rgba(255,255,255,0.05)' }]}
@@ -286,13 +288,13 @@ export function SettingsView({ activeProfile, onChangeProfile }: SettingsViewPro
           <View style={[styles.modalCard, { backgroundColor: isOledMode ? '#0A0A0C' : '#1e1e24' }]}>
             <View style={styles.modalHeader}>
               <ThemedText style={styles.modalTitle}>Tema & Görünüm</ThemedText>
-              <TouchableOpacity onPress={() => setShowAppearanceModal(false)} style={styles.modalCloseBtn}>
+              <TVTouchable onPress={() => setShowAppearanceModal(false)} style={styles.modalCloseBtn}>
                 <Ionicons name="close" size={20} color="#AAA" />
-              </TouchableOpacity>
+              </TVTouchable>
             </View>
             <ThemedText style={styles.modalDesc}>Ekran tercihinize uygun temayı seçin:</ThemedText>
 
-            <TouchableOpacity
+            <TVTouchable
               style={[styles.modalOptionRow, !isOledMode && styles.modalOptionSelected]}
               onPress={() => handleToggleOled(false)}
             >
@@ -302,9 +304,9 @@ export function SettingsView({ activeProfile, onChangeProfile }: SettingsViewPro
                 <ThemedText style={styles.modalOptionSub}>Klasik Netflix stili koyu gri (#141414)</ThemedText>
               </View>
               {!isOledMode && <Ionicons name="checkmark-circle" size={22} color="#E50914" />}
-            </TouchableOpacity>
+            </TVTouchable>
 
-            <TouchableOpacity
+            <TVTouchable
               style={[styles.modalOptionRow, isOledMode && styles.modalOptionSelected]}
               onPress={() => handleToggleOled(true)}
             >
@@ -314,7 +316,7 @@ export function SettingsView({ activeProfile, onChangeProfile }: SettingsViewPro
                 <ThemedText style={styles.modalOptionSub}>AMOLED ekranlar için sıfır güç tüketimi (#000000)</ThemedText>
               </View>
               {isOledMode && <Ionicons name="checkmark-circle" size={22} color="#E50914" />}
-            </TouchableOpacity>
+            </TVTouchable>
           </View>
         </View>
       </Modal>
@@ -330,12 +332,12 @@ export function SettingsView({ activeProfile, onChangeProfile }: SettingsViewPro
           <View style={[styles.modalCard, { backgroundColor: isOledMode ? '#0A0A0C' : '#1e1e24' }]}>
             <View style={styles.modalHeader}>
               <ThemedText style={styles.modalTitle}>Uygulama Dili</ThemedText>
-              <TouchableOpacity onPress={() => setShowLanguageModal(false)} style={styles.modalCloseBtn}>
+              <TVTouchable onPress={() => setShowLanguageModal(false)} style={styles.modalCloseBtn}>
                 <Ionicons name="close" size={20} color="#AAA" />
-              </TouchableOpacity>
+              </TVTouchable>
             </View>
 
-            <TouchableOpacity
+            <TVTouchable
               style={[styles.modalOptionRow, currentLang === 'tr' && styles.modalOptionSelected]}
               onPress={() => handleSelectLang('tr')}
             >
@@ -345,9 +347,9 @@ export function SettingsView({ activeProfile, onChangeProfile }: SettingsViewPro
                 <ThemedText style={styles.modalOptionSub}>Varsayılan arayüz dili</ThemedText>
               </View>
               {currentLang === 'tr' && <Ionicons name="checkmark-circle" size={22} color="#E50914" />}
-            </TouchableOpacity>
+            </TVTouchable>
 
-            <TouchableOpacity
+            <TVTouchable
               style={[styles.modalOptionRow, currentLang === 'en' && styles.modalOptionSelected]}
               onPress={() => handleSelectLang('en')}
             >
@@ -357,7 +359,7 @@ export function SettingsView({ activeProfile, onChangeProfile }: SettingsViewPro
                 <ThemedText style={styles.modalOptionSub}>English interface</ThemedText>
               </View>
               {currentLang === 'en' && <Ionicons name="checkmark-circle" size={22} color="#E50914" />}
-            </TouchableOpacity>
+            </TVTouchable>
           </View>
         </View>
       </Modal>
@@ -373,9 +375,9 @@ export function SettingsView({ activeProfile, onChangeProfile }: SettingsViewPro
           <View style={[styles.modalCard, { backgroundColor: isOledMode ? '#0A0A0C' : '#1e1e24' }]}>
             <View style={styles.modalHeader}>
               <ThemedText style={styles.modalTitle}>Hesap Bilgileri</ThemedText>
-              <TouchableOpacity onPress={() => setShowAccountModal(false)} style={styles.modalCloseBtn}>
+              <TVTouchable onPress={() => setShowAccountModal(false)} style={styles.modalCloseBtn}>
                 <Ionicons name="close" size={20} color="#AAA" />
-              </TouchableOpacity>
+              </TVTouchable>
             </View>
 
             <View style={styles.modalInfoBox}>
@@ -388,7 +390,7 @@ export function SettingsView({ activeProfile, onChangeProfile }: SettingsViewPro
               <ThemedText style={styles.modalInfoVal}>{user?.uid || 'Bilinmiyor'}</ThemedText>
             </View>
 
-            <TouchableOpacity
+            <TVTouchable
               style={styles.modalActionBtn}
               onPress={handleSendPasswordReset}
               disabled={sendingResetEmail}
@@ -401,7 +403,7 @@ export function SettingsView({ activeProfile, onChangeProfile }: SettingsViewPro
                   <ThemedText style={styles.modalActionBtnText}>Şifre Sıfırlama Bağlantısı Gönder</ThemedText>
                 </>
               )}
-            </TouchableOpacity>
+            </TVTouchable>
           </View>
         </View>
       </Modal>
@@ -417,9 +419,9 @@ export function SettingsView({ activeProfile, onChangeProfile }: SettingsViewPro
           <View style={[styles.modalCard, { backgroundColor: isOledMode ? '#0A0A0C' : '#1e1e24' }]}>
             <View style={styles.modalHeader}>
               <ThemedText style={styles.modalTitle}>Aktif Profil</ThemedText>
-              <TouchableOpacity onPress={() => setShowProfileModal(false)} style={styles.modalCloseBtn}>
+              <TVTouchable onPress={() => setShowProfileModal(false)} style={styles.modalCloseBtn}>
                 <Ionicons name="close" size={20} color="#AAA" />
-              </TouchableOpacity>
+              </TVTouchable>
             </View>
 
             <View style={{ alignItems: 'center', marginVertical: 16 }}>
@@ -436,7 +438,7 @@ export function SettingsView({ activeProfile, onChangeProfile }: SettingsViewPro
               </ThemedText>
             </View>
 
-            <TouchableOpacity
+            <TVTouchable
               style={styles.modalActionBtn}
               onPress={() => {
                 setShowProfileModal(false);
@@ -445,7 +447,7 @@ export function SettingsView({ activeProfile, onChangeProfile }: SettingsViewPro
             >
               <Ionicons name="swap-horizontal" size={18} color="#fff" />
               <ThemedText style={styles.modalActionBtnText}>Profili Değiştir / Yönet</ThemedText>
-            </TouchableOpacity>
+            </TVTouchable>
           </View>
         </View>
       </Modal>
@@ -461,9 +463,9 @@ export function SettingsView({ activeProfile, onChangeProfile }: SettingsViewPro
           <View style={[styles.modalCard, { backgroundColor: isOledMode ? '#0A0A0C' : '#1e1e24' }]}>
             <View style={styles.modalHeader}>
               <ThemedText style={styles.modalTitle}>Maxen Hakkında</ThemedText>
-              <TouchableOpacity onPress={() => setShowAboutModal(false)} style={styles.modalCloseBtn}>
+              <TVTouchable onPress={() => setShowAboutModal(false)} style={styles.modalCloseBtn}>
                 <Ionicons name="close" size={20} color="#AAA" />
-              </TouchableOpacity>
+              </TVTouchable>
             </View>
 
             <View style={{ alignItems: 'center', marginVertical: 12 }}>
@@ -471,7 +473,7 @@ export function SettingsView({ activeProfile, onChangeProfile }: SettingsViewPro
                 <Ionicons name="film" size={32} color="#fff" />
               </View>
               <ThemedText style={{ fontSize: 22, fontWeight: '900', color: '#fff' }}>Maxen v10.5.0</ThemedText>
-              <ThemedText style={{ fontSize: 13, color: '#aaa', marginTop: 4 }}>Sinema Deneyimini Her Ekrana Taşıyın</ThemedText>
+              <ThemedText style={{ fontSize: Platform.isTV ? 16 : 13, color: '#aaa', marginTop: 4 }}>Sinema Deneyimini Her Ekrana Taşıyın</ThemedText>
             </View>
 
             <View style={styles.modalInfoBox}>
@@ -507,7 +509,7 @@ const styles = StyleSheet.create({
     marginBottom: Platform.isTV ? 36 : 24,
   },
   pageTitle: {
-    fontSize: Platform.isTV ? 48 : 32,
+    fontSize: Platform.isTV ? 32 : 32,
     fontWeight: '900',
     color: '#FFFFFF',
     letterSpacing: 0.5,
@@ -565,7 +567,7 @@ const styles = StyleSheet.create({
     color: '#fff',
   },
   profileEmail: {
-    fontSize: 14,
+    fontSize: Platform.isTV ? 17 : 14,
     marginTop: 4,
   },
   section: {
@@ -596,12 +598,12 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   settingLabel: {
-    fontSize: Platform.isTV ? 24 : 16,
+    fontSize: Platform.isTV ? 20 : 16,
     fontWeight: '600',
     color: '#FFFFFF',
   },
   settingSub: {
-    fontSize: 13,
+    fontSize: Platform.isTV ? 16 : 13,
     marginTop: 3,
   },
   changeProfileBtn: {
@@ -665,7 +667,7 @@ const styles = StyleSheet.create({
     padding: 4,
   },
   modalDesc: {
-    fontSize: 13,
+    fontSize: Platform.isTV ? 16 : 13,
     color: '#9E9EA7',
     marginBottom: 14,
   },
@@ -712,7 +714,7 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
   modalInfoVal: {
-    fontSize: 14,
+    fontSize: Platform.isTV ? 17 : 14,
     color: '#FFFFFF',
     fontWeight: '600',
     marginTop: 3,

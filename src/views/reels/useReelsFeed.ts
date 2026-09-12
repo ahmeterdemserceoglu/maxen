@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
-import { ViewToken, BackHandler } from 'react-native';
+import { ViewToken, BackHandler, Platform } from 'react-native';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from '@/config/firebase';
@@ -76,12 +76,13 @@ export function useReelsFeed({
     isMountedRef.current = true;
     return () => {
       isMountedRef.current = false;
-      ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT).catch(() => {});
+      if (!Platform.isTV) ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT).catch(() => {});
     };
   }, []);
 
   // YouTube videoları için manuel yatay döndürme (IMDb kendi hallediyor)
   useEffect(() => {
+    if (Platform.isTV) return;
     const currentItem = items[activeIndex];
     const isYouTube = currentItem?.youtubeKey && !currentItem?.imdbId;
 

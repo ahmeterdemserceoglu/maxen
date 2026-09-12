@@ -5,8 +5,8 @@ import {
   TouchableOpacity,
   Platform,
   useWindowDimensions,
-  findNodeHandle,
 } from 'react-native';
+import { getTVNodeHandle } from '@/utils/tvNodeHandle';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -48,13 +48,11 @@ export const HeroBanner: React.FC<HeroBannerProps> = React.memo(({
 
   // Expose Play Button node handle for deterministic TV navigation from Sidebar
   React.useEffect(() => {
-    if (playBtnRef?.current) {
-      try {
-        const id = findNodeHandle(playBtnRef.current);
-        if (id) {
-          setHeroPlayBtnNodeId(id);
-        }
-      } catch (e) {}
+    if (isTV && playBtnRef?.current) {
+      const id = getTVNodeHandle(playBtnRef.current);
+      if (id) {
+        setHeroPlayBtnNodeId(id);
+      }
     }
   }, [playBtnRef, setHeroPlayBtnNodeId]);
 
@@ -398,8 +396,8 @@ export const HeroBanner: React.FC<HeroBannerProps> = React.memo(({
             onPress={() => onPressPlay(hero)}
             onFocus={onFocus}
             nextFocusLeft={sidebarActiveNodeId || undefined}
-            nextFocusUp={playBtnRef?.current ? findNodeHandle(playBtnRef.current) || undefined : undefined}
-            nextFocusRight={infoBtnRef.current ? findNodeHandle(infoBtnRef.current) || undefined : undefined}
+            nextFocusUp={getTVNodeHandle(playBtnRef)}
+            nextFocusRight={getTVNodeHandle(infoBtnRef)}
             style={[
               styles.heroPlayBtn,
               (isDesktopWeb || isTV)
@@ -442,8 +440,8 @@ export const HeroBanner: React.FC<HeroBannerProps> = React.memo(({
             ref={infoBtnRef}
             onPress={() => onPressInfo(hero)}
             onFocus={onFocus}
-            nextFocusLeft={playBtnRef?.current ? findNodeHandle(playBtnRef.current) || undefined : undefined}
-            nextFocusUp={infoBtnRef.current ? findNodeHandle(infoBtnRef.current) || undefined : undefined}
+            nextFocusLeft={getTVNodeHandle(playBtnRef)}
+            nextFocusUp={getTVNodeHandle(infoBtnRef)}
             style={[
               styles.heroInfoBtn,
               isTV

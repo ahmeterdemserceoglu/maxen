@@ -3,8 +3,8 @@ import {
   View,
   StyleSheet,
   useWindowDimensions,
-  findNodeHandle,
 } from 'react-native';
+import { getTVNodeHandle } from '@/utils/tvNodeHandle';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -36,11 +36,10 @@ export const TVHeroCanvas: React.FC<TVHeroCanvasProps> = React.memo(({
 
   useEffect(() => {
     if (playBtnRef?.current) {
-      try {
-        const id = findNodeHandle(playBtnRef.current);
-        if (id) setHeroPlayBtnNodeId(id);
-      } catch (e) {}
+      const id = getTVNodeHandle(playBtnRef.current);
+      if (id) setHeroPlayBtnNodeId(id);
     }
+    return () => setHeroPlayBtnNodeId(null);
   }, [playBtnRef, setHeroPlayBtnNodeId]);
 
   if (!media) return null;
@@ -206,11 +205,12 @@ export const TVHeroCanvas: React.FC<TVHeroCanvasProps> = React.memo(({
         <View style={styles.buttonRow}>
           <TVFocusable
             ref={playBtnRef}
+            hasTVPreferredFocus
             onFocus={onFocus}
             onPress={() => onPressPlay(media)}
             nextFocusLeft={sidebarActiveNodeId || undefined}
             nextFocusDown={firstRowFirstCardNodeId || undefined}
-            nextFocusRight={infoBtnRef.current ? findNodeHandle(infoBtnRef.current) || undefined : undefined}
+            nextFocusRight={getTVNodeHandle(infoBtnRef)}
             style={styles.playBtn}
             focusedStyle={styles.playBtnFocused}
           >
@@ -222,7 +222,7 @@ export const TVHeroCanvas: React.FC<TVHeroCanvasProps> = React.memo(({
             ref={infoBtnRef}
             onFocus={onFocus}
             onPress={() => onPressInfo(media)}
-            nextFocusLeft={playBtnRef?.current ? findNodeHandle(playBtnRef.current) || undefined : undefined}
+            nextFocusLeft={getTVNodeHandle(playBtnRef)}
             nextFocusDown={firstRowFirstCardNodeId || undefined}
             style={styles.infoBtn}
             focusedStyle={styles.infoBtnFocused}

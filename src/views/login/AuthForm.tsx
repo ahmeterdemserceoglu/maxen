@@ -1,3 +1,4 @@
+import { TVTextInput, TVSwitch } from '@/components/TVFormControls';
 import React from 'react';
 import {
   View,
@@ -90,7 +91,7 @@ export function AuthForm({
                 color="#9BA9BA"
               />
 
-              <TextInput
+              <TVTextInput
                 style={styles.premiumInputText}
                 placeholder="Adınız Soyadınız"
                 placeholderTextColor="#647080"
@@ -112,7 +113,7 @@ export function AuthForm({
               color="#9BA9BA"
             />
 
-            <TextInput
+            <TVTextInput
               style={styles.premiumInputText}
               placeholder="E-posta adresiniz"
               placeholderTextColor="#647080"
@@ -151,7 +152,7 @@ export function AuthForm({
               color="#9BA9BA"
             />
 
-            <TextInput
+            <TVTextInput
               style={styles.premiumInputText}
               placeholder="Şifreniz"
               placeholderTextColor="#647080"

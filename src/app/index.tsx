@@ -7,6 +7,7 @@ import { useTheme } from '@/hooks/use-theme';
 import { ThemedText } from '@/components/themed-text';
 import { TVFocusable } from '@/components/TVFocusable';
 import { TVSidebar } from '@/components/TVSidebar';
+import { TVFocusGroup } from '@/components/TVFocusGroup';
 import { NetflixWebNavbar } from '@/components/NetflixWebNavbar';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -120,6 +121,16 @@ export default function Index() {
   const [handoffSession, setHandoffSession] = useState<PlaybackSessionData | null>(null);
   const [isOffline, setIsOffline] = useState(!networkService.getStatus());
   const lastBackPressRef = useRef<number>(0);
+  const videoOriginDetailRef = useRef<any>(null);
+
+  const handleCloseActiveVideo = useCallback(() => {
+    const originDetail = videoOriginDetailRef.current;
+    videoOriginDetailRef.current = null;
+    closeVideo();
+    if (originDetail) {
+      requestAnimationFrame(() => setActiveDetail(originDetail));
+    }
+  }, [closeVideo, setActiveDetail]);
 
   useEffect(() => {
     const unsub = networkService.subscribe((online) => {
@@ -198,12 +209,12 @@ export default function Index() {
           useUiStore.getState().dispatchRemoteAction(action.type, action.payload);
 
           if (action.type === 'back') {
-            closeVideo();
-            closeDetail();
-            closeActor();
-            closeDiscoveryHub();
-            closeReels();
-            closeComingSoon();
+            if (activeVideo) handleCloseActiveVideo();
+            else if (activeActor) closeActor();
+            else if (activeDetail) closeDetail();
+            else if (showDiscoveryHub) closeDiscoveryHub();
+            else if (showReelsModal) closeReels();
+            else if (showComingSoonModal) closeComingSoon();
           } else if (action.type === 'home') {
             clearModals();
             setActiveTab('home');
@@ -234,7 +245,13 @@ export default function Index() {
     isTVDevice,
     user?.uid,
     openVideo,
-    closeVideo,
+    handleCloseActiveVideo,
+    activeVideo,
+    activeActor,
+    activeDetail,
+    showDiscoveryHub,
+    showReelsModal,
+    showComingSoonModal,
     closeDetail,
     closeActor,
     closeDiscoveryHub,
@@ -374,7 +391,7 @@ export default function Index() {
       }
       // 1. activeVideo (closes video player)
       if (activeVideo) {
-        closeVideo();
+        handleCloseActiveVideo();
         return true;
       }
       // 2. activeActor (closes actor detail and restores parent modal if returnToModal is set)
@@ -449,7 +466,7 @@ export default function Index() {
     showReelsModal,
     showComingSoonModal,
     activeTab,
-    closeVideo,
+    handleCloseActiveVideo,
     closeActor,
     closeDetail,
     closeDiscoveryHub,
@@ -531,15 +548,15 @@ export default function Index() {
         return false;
       }}
     >
-      <View
+      <TVFocusGroup
         style={[
           styles.viewContainer,
           isTV && styles.tvViewContainer,
           isDesktopWeb && styles.desktopWebViewContainer,
         ]}
       >
-        {renderActiveView()}
-      </View>
+        {(!activeVideo || isMiniPlayer) && !activeDetail && !activeActor ? renderActiveView() : null}
+      </TVFocusGroup>
 
       {/* Netflix Top Navigation Bar for Desktop Web */}
       {isDesktopWeb && isNoModalOpen && (
@@ -658,6 +675,7 @@ export default function Index() {
             openActor(actor, true);
           }}
           onPlayMedia={(mediaToPlay) => {
+            videoOriginDetailRef.current = activeDetail;
             setActiveDetail(null);
             openVideo(mediaToPlay);
           }}
@@ -686,7 +704,7 @@ export default function Index() {
           profileId={profileId}
           startSeconds={activeVideo.positionSeconds || 0}
           onClose={() => {
-            closeVideo();
+            handleCloseActiveVideo();
           }}
           onPlayNextMedia={(nextMedia) => setActiveVideo(nextMedia)}
         />

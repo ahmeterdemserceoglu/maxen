@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Animated, Easing } from 'react-native';
+import { Animated, Easing, Platform } from 'react-native';
 import { useAuth } from '@/contexts/AuthContext';
 import {
   type Profile,
@@ -71,6 +71,7 @@ export function useAuthScreenState() {
   const logoGlowAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
+    if (Platform.isTV) return;
     const floatAnimation = Animated.loop(
       Animated.sequence([
         Animated.timing(floatAnim, {

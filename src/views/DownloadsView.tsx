@@ -1,3 +1,4 @@
+import { TVTouchable } from '@/components/TVTouchable';
 import React, { useEffect, useState } from 'react';
 import {
   View,
@@ -8,6 +9,7 @@ import {
   Alert,
   BackHandler,
   ActivityIndicator,
+  Platform,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
@@ -123,8 +125,9 @@ export function DownloadsView({ onBack, onPlayMedia, isOfflineMode }: DownloadsV
 
     return (
       <View style={styles.card}>
-        <TouchableOpacity
+        <TVTouchable
           style={styles.cardLeft}
+          disabled={Platform.isTV && !isCompleted}
           activeOpacity={0.8}
           onPress={() => isCompleted && handlePlay(item)}
         >
@@ -209,30 +212,30 @@ export function DownloadsView({ onBack, onPlayMedia, isOfflineMode }: DownloadsV
               </View>
             )}
           </View>
-        </TouchableOpacity>
+        </TVTouchable>
 
         {/* Butonlar */}
         <View style={styles.actionsCol}>
           {isCompleted && (
-            <TouchableOpacity style={styles.playBtn} onPress={() => handlePlay(item)}>
+            <TVTouchable style={styles.playBtn} accessibilityLabel="Oynat" onPress={() => handlePlay(item)}>
               <Ionicons name="play" size={18} color="#FFF" />
-            </TouchableOpacity>
+            </TVTouchable>
           )}
 
           {isDownloading && (
-            <TouchableOpacity style={styles.actionBtn} onPress={() => pauseDownload(item.id)}>
+            <TVTouchable style={styles.actionBtn} accessibilityLabel="İndirmeyi duraklat" onPress={() => pauseDownload(item.id)}>
               <Ionicons name="pause" size={18} color="#FFA000" />
-            </TouchableOpacity>
+            </TVTouchable>
           )}
 
           {isPaused && (
-            <TouchableOpacity style={styles.actionBtn} onPress={() => resumeDownload(item.id)}>
+            <TVTouchable style={styles.actionBtn} accessibilityLabel="İndirmeye devam et" onPress={() => resumeDownload(item.id)}>
               <Ionicons name="play" size={18} color="#00E5FF" />
-            </TouchableOpacity>
+            </TVTouchable>
           )}
 
           {isError && (
-            <TouchableOpacity
+            <TVTouchable
               style={[
                 styles.actionBtn,
                 { backgroundColor: retryCount >= 2 ? 'rgba(255, 82, 82, 0.2)' : 'rgba(255, 160, 0, 0.2)', borderRadius: 16 },
@@ -244,12 +247,12 @@ export function DownloadsView({ onBack, onPlayMedia, isOfflineMode }: DownloadsV
                 size={18}
                 color={retryCount >= 2 ? '#FF5252' : '#FFA000'}
               />
-            </TouchableOpacity>
+            </TVTouchable>
           )}
 
-          <TouchableOpacity style={styles.actionBtn} onPress={() => handleDelete(item)}>
+          <TVTouchable style={styles.actionBtn} accessibilityLabel="İndirmeyi sil" onPress={() => handleDelete(item)}>
             <Ionicons name="trash-outline" size={18} color="#FF5252" />
-          </TouchableOpacity>
+          </TVTouchable>
         </View>
       </View>
     );
@@ -265,9 +268,9 @@ export function DownloadsView({ onBack, onPlayMedia, isOfflineMode }: DownloadsV
             <Text style={styles.offlinePillText}>Çevrimdışı</Text>
           </View>
         ) : onBack ? (
-          <TouchableOpacity onPress={onBack} style={styles.backBtn} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+          <TVTouchable onPress={onBack} style={styles.backBtn} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
             <Ionicons name="arrow-back" size={24} color="#FFF" />
-          </TouchableOpacity>
+          </TVTouchable>
         ) : null}
         <View style={{ flex: 1 }}>
           <Text style={styles.headerTitle}>İndirilenler</Text>
@@ -287,7 +290,7 @@ export function DownloadsView({ onBack, onPlayMedia, isOfflineMode }: DownloadsV
           <Ionicons name="cloud-offline-outline" size={72} color="#444" />
           <Text style={styles.emptyTitle}>Henüz bir şey indirmediniz</Text>
           <Text style={styles.emptyDesc}>
-            {isOfflineMode
+            {Platform.isTV ? 'Bu cihazda kayıtlı bir içerik bulunmuyor.' : isOfflineMode
               ? 'Çevrimdışı izlemek için internete bağlandığınızda dizi veya film detay sayfasından içerik indirin.'
               : 'Uçakta veya internetsiz seyahatte izlemek için dizi ve filmlerin detay sayfasındaki "İndir" butonuna tıklayın.'}
           </Text>
@@ -296,7 +299,9 @@ export function DownloadsView({ onBack, onPlayMedia, isOfflineMode }: DownloadsV
         <FlatList
           data={downloads}
           keyExtractor={(item) => item.id}
-          extraData={downloads}
+          initialNumToRender={Platform.isTV ? 4 : 10}
+          maxToRenderPerBatch={Platform.isTV ? 2 : 10}
+          windowSize={Platform.isTV ? 3 : 21}
           renderItem={renderItem}
           contentContainerStyle={styles.listContent}
         />
@@ -333,7 +338,7 @@ const styles = StyleSheet.create({
   },
   offlinePillText: {
     color: '#FF5252',
-    fontSize: 12,
+    fontSize: Platform.isTV ? 15 : 12,
     fontWeight: '700',
   },
   backBtn: {
@@ -347,7 +352,7 @@ const styles = StyleSheet.create({
   },
   headerSub: {
     color: '#888',
-    fontSize: 12,
+    fontSize: Platform.isTV ? 15 : 12,
   },
   storageBadge: {
     flexDirection: 'row',
@@ -362,11 +367,11 @@ const styles = StyleSheet.create({
   },
   storageText: {
     color: '#00E5FF',
-    fontSize: 12,
+    fontSize: Platform.isTV ? 15 : 12,
     fontWeight: '700',
   },
   listContent: {
-    padding: 16,
+    padding: Platform.isTV ? 32 : 16,
     gap: 12,
   },
   card: {
@@ -401,12 +406,12 @@ const styles = StyleSheet.create({
   },
   title: {
     color: '#FFF',
-    fontSize: 14,
+    fontSize: Platform.isTV ? 18 : 14,
     fontWeight: '700',
   },
   subText: {
     color: '#888',
-    fontSize: 12,
+    fontSize: Platform.isTV ? 15 : 12,
     marginTop: 2,
   },
   statusRow: {

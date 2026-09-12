@@ -1,3 +1,5 @@
+import { TVModalSurface } from '@/components/TVModalSurface';
+import { TVTouchable } from '@/components/TVTouchable';
 import React from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableWithoutFeedback, Platform } from 'react-native';
 import { TVFocusable } from '@/components/TVFocusable';
@@ -12,6 +14,8 @@ export interface SubtitleTrack {
   url: string;
   content?: string;
   fileId?: number;
+  headers?: Record<string, string>;
+  provider?: string;
 }
 
 interface SubtitleMenuModalProps {
@@ -35,28 +39,10 @@ export function SubtitleMenuModal({
 }: SubtitleMenuModalProps) {
   if (!visible) return null;
 
-  // Hem harici (VTT / OpenSubtitles) hem de dahili (embedded) altyazıları tek listede birleştir
+  // Yalnız harici (VTT/SRT/HLS subtitle playlist) altyazıları göster.
   const allSubtitles = React.useMemo(() => {
-    const list: SubtitleTrack[] = [...subtitles];
-    if (availableSubtitleTracks && availableSubtitleTracks.length > 0) {
-      for (const track of availableSubtitleTracks) {
-        const trackLabel = normalizeLang(track.label || track.language || 'Dahili Altyazı');
-        const exists = list.some(
-          s => (s.label && normalizeLang(s.label).toLowerCase() === trackLabel.toLowerCase()) ||
-               (s.fileId && s.fileId === track.id)
-        );
-        if (!exists) {
-          list.push({
-            label: trackLabel,
-            lang: track.language || trackLabel,
-            url: '',
-            fileId: track.id,
-          });
-        }
-      }
-    }
-    return list;
-  }, [subtitles, availableSubtitleTracks]);
+    return subtitles.filter((subtitle) => Boolean(subtitle.url || subtitle.content));
+  }, [subtitles]);
 
   const isSubActive = (sub: SubtitleTrack) => {
     if (!selectedSubtitle) return false;
@@ -75,7 +61,7 @@ export function SubtitleMenuModal({
   const isClosedActive = selectedSubtitle === null;
 
   return (
-    <View style={styles.overlay}>
+    <TVModalSurface onClose={onClose} style={styles.overlay}>
       <TouchableWithoutFeedback onPress={onClose}>
         <View style={styles.closeMask} />
       </TouchableWithoutFeedback>
@@ -146,8 +132,9 @@ export function SubtitleMenuModal({
             </Text>
           )}
         </ScrollView>
+        {Platform.isTV && <TVFocusable onPress={onClose} style={{ padding: 12, marginTop: 8 }} accessibilityLabel="Kapat"><Text style={{ color: '#fff', fontSize: 18 }}>Kapat</Text></TVFocusable>}
       </View>
-    </View>
+    </TVModalSurface>
   );
 }
 
@@ -176,7 +163,7 @@ const styles = StyleSheet.create({
   },
   panelSectionTitle: {
     color: '#8e8e93',
-    fontSize: 11,
+    fontSize: Platform.isTV ? 15 : 11,
     fontWeight: '700',
     letterSpacing: 1,
     paddingHorizontal: 12,

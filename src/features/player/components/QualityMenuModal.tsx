@@ -1,3 +1,5 @@
+import { TVModalSurface } from '@/components/TVModalSurface';
+import { TVTouchable } from '@/components/TVTouchable';
 import React from 'react';
 import {
   View,
@@ -83,7 +85,7 @@ export function QualityMenuModal({
   });
 
   return (
-    <View style={styles.overlay}>
+    <TVModalSurface onClose={onClose} style={styles.overlay}>
       <TouchableWithoutFeedback onPress={onClose}>
         <View style={styles.closeMask} />
       </TouchableWithoutFeedback>
@@ -100,13 +102,13 @@ export function QualityMenuModal({
               <Text style={styles.headerSubtitle}>Akış çözünürlük tercihi</Text>
             </View>
           </View>
-          <TouchableOpacity
+          <TVTouchable
             style={styles.closeBtn}
             onPress={onClose}
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
           >
             <Ionicons name="close" size={20} color="#8E8E93" />
-          </TouchableOpacity>
+          </TVTouchable>
         </View>
 
         <View style={styles.divider} />
@@ -168,7 +170,7 @@ export function QualityMenuModal({
           })}
         </ScrollView>
       </View>
-    </View>
+    </TVModalSurface>
   );
 }
 
@@ -231,7 +233,7 @@ const styles = StyleSheet.create({
   },
   headerSubtitle: {
     color: '#71717A',
-    fontSize: 11,
+    fontSize: Platform.isTV ? 15 : 11,
     marginTop: 1,
   },
   closeBtn: {
@@ -289,7 +291,7 @@ const styles = StyleSheet.create({
   },
   cardTitle: {
     color: '#FFFFFF',
-    fontSize: 14,
+    fontSize: Platform.isTV ? 17 : 14,
     fontWeight: '600',
   },
   cardTitleActive: {

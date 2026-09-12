@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Alert, Keyboard } from 'react-native';
+import { Alert, Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { TMDB_BASE_URL, TMDB_IMAGE_BASE_URL } from '@/config/tmdb';
 import { startSpeechRecognition } from '@/modules/VoiceRecognition';
@@ -64,6 +64,8 @@ export function normalizeItem(item: any) {
     rating: item.vote_average ? item.vote_average.toFixed(1) : null,
     year: item.release_date?.split('-')[0] || item.first_air_date?.split('-')[0] || '',
     overview: item.overview || '',
+    genreIds: item.genre_ids || [],
+    popularity: item.popularity || 0,
   };
 }
 
@@ -85,6 +87,7 @@ export function useSearchEngine(profileId: string) {
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [searchHistory, setSearchHistory] = useState<string[]>([]);
   const [trendingItems, setTrendingItems] = useState<any[]>([]);
+  const [relatedItems, setRelatedItems] = useState<any[]>([]);
   const [filterModalVisible, setFilterModalVisible] = useState(false);
 
   const [mediaType, setMediaType] = useState<'all' | 'movie' | 'tv'>('all');
@@ -108,6 +111,7 @@ export function useSearchEngine(profileId: string) {
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
   const queryRef = useRef(query);
+  const requestId = useRef(0);
   queryRef.current = query;
 
   useEffect(() => {
@@ -117,6 +121,62 @@ export function useSearchEngine(profileId: string) {
       else setSearchHistory([]);
     })();
   }, [historyKey]);
+
+  // Otomatik Haftalık Trendleri Çek (Boş arama durumunda 'Top searches' için)
+  useEffect(() => {
+    let isCancelled = false;
+    const fetchTrending = async () => {
+      try {
+        const res = await fetch(`${TMDB_BASE_URL}/trending/all/week?language=tr-TR`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!isCancelled && data?.results) {
+          const items = data.results
+            .filter((i: any) => i.backdrop_path || i.poster_path)
+            .map((i: any) => normalizeItem(i));
+          setTrendingItems(items);
+        }
+      } catch (e) {
+        console.warn('Trending fetch error in search:', e);
+      }
+    };
+    fetchTrending();
+    return () => {
+      isCancelled = true;
+    };
+  }, []);
+
+  // Aktif arama sonucu için benzer/önerilen yapımları çek
+  useEffect(() => {
+    if (!query.trim() || results.length === 0) {
+      setRelatedItems([]);
+      return;
+    }
+    const topItem = results.find((r) => r.type === 'movie' || r.type === 'tv');
+    if (!topItem || !topItem.id) return;
+
+    let isCancelled = false;
+    const fetchRelated = async () => {
+      try {
+        const endpoint = topItem.type === 'tv' ? 'tv' : 'movie';
+        const res = await fetch(`${TMDB_BASE_URL}/${endpoint}/${topItem.id}/recommendations?language=tr-TR`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!isCancelled && data?.results) {
+          const items = data.results
+            .filter((i: any) => i.poster_path)
+            .map((i: any) => normalizeItem(i));
+          setRelatedItems(items);
+        }
+      } catch (e) {
+        // Sessizce geç
+      }
+    };
+    fetchRelated();
+    return () => {
+      isCancelled = true;
+    };
+  }, [query, results]);
 
   const addToHistory = async (term: string) => {
     if (!term.trim()) return;
@@ -153,17 +213,20 @@ export function useSearchEngine(profileId: string) {
   }, []);
 
   useEffect(() => {
+    if (Platform.isTV) return;
     const timer = setTimeout(() => fetchSuggestions(query), 300);
     return () => clearTimeout(timer);
   }, [query, fetchSuggestions]);
 
   const performSearch = useCallback(
     async (searchText: string, pageNum: number, append: boolean) => {
+      const currentRequest = ++requestId.current;
       const { mediaType: currentMediaType, genreIds, sortBy: currentSortBy, yearMin: currentYearMin, yearMax: currentYearMax } = appliedFilters;
       setLoading(true);
       try {
         let tmdbResults: any[] = [];
         const genreParam = genreIds.join(',');
+        const tvSortBy = currentSortBy.replace('release_date', 'first_air_date');
 
         if (searchText.trim()) {
           const url = `${TMDB_BASE_URL}/search/multi?query=${encodeURIComponent(
@@ -176,7 +239,7 @@ export function useSearchEngine(profileId: string) {
             .map((i: any) =>
               i.media_type === 'person' ? normalizePerson(i) : normalizeItem(i)
             );
-        } else if (genreParam) {
+        } else if (genreParam || Platform.isTV) {
           if (currentMediaType === 'all') {
             const [movies, tvs] = await Promise.all([
               fetch(
@@ -187,7 +250,7 @@ export function useSearchEngine(profileId: string) {
                 .then((r) => r.json())
                 .then((d) => (d.results || []).map((i: any) => normalizeItem(i))),
               fetch(
-                `${TMDB_BASE_URL}/discover/tv?with_genres=${genreParam}&language=tr-TR&sort_by=${currentSortBy}&page=${pageNum}${
+                `${TMDB_BASE_URL}/discover/tv?with_genres=${genreParam}&language=tr-TR&sort_by=${tvSortBy}&page=${pageNum}${
                   currentYearMin ? `&first_air_date.gte=${currentYearMin}-01-01` : ''
                 }${currentYearMax ? `&first_air_date.lte=${currentYearMax}-12-31` : ''}`
               )
@@ -197,7 +260,7 @@ export function useSearchEngine(profileId: string) {
             tmdbResults = [...movies, ...tvs].sort((a, b) => (b.rating || 0) - (a.rating || 0));
           } else {
             const endpoint = currentMediaType === 'tv' ? 'discover/tv' : 'discover/movie';
-            let url = `${TMDB_BASE_URL}/${endpoint}?with_genres=${genreParam}&language=tr-TR&sort_by=${currentSortBy}&page=${pageNum}`;
+            let url = `${TMDB_BASE_URL}/${endpoint}?with_genres=${genreParam}&language=tr-TR&sort_by=${currentMediaType === 'tv' ? tvSortBy : currentSortBy}&page=${pageNum}`;
             if (currentYearMin)
               url +=
                 currentMediaType === 'tv'
@@ -220,7 +283,21 @@ export function useSearchEngine(profileId: string) {
           tmdbResults = (data.results || []).map((i: any) => normalizeItem(i));
         }
 
-        const finalResults = [...tmdbResults];
+        if (currentRequest !== requestId.current) return;
+        const finalResults = Platform.isTV
+          ? tmdbResults.filter((item) =>
+              (currentMediaType === 'all' || item.type === currentMediaType) &&
+              (!genreIds.length || genreIds.every((id) => item.genreIds?.includes(id)))
+            )
+          : [...tmdbResults];
+        if (Platform.isTV && !searchText.trim()) {
+          finalResults.sort((a, b) => {
+            if (currentSortBy === 'vote_average.desc') return Number(b.rating || 0) - Number(a.rating || 0);
+            if (currentSortBy === 'release_date.asc') return Number(a.year || 0) - Number(b.year || 0);
+            if (currentSortBy === 'release_date.desc') return Number(b.year || 0) - Number(a.year || 0);
+            return (b.popularity || 0) - (a.popularity || 0);
+          });
+        }
 
         if (append) {
           setResults((prev) => [...prev, ...finalResults]);
@@ -229,21 +306,25 @@ export function useSearchEngine(profileId: string) {
         }
         setHasMore(tmdbResults.length >= 20);
       } catch (error) {
+        if (currentRequest !== requestId.current) return;
         console.error('Arama hatası:', error);
         if (!append) setResults([]);
       } finally {
-        setLoading(false);
+        if (currentRequest === requestId.current) setLoading(false);
       }
     },
     [appliedFilters]
   );
 
   useEffect(() => {
+    if (Platform.isTV) return;
     setPage(1);
     performSearch(queryRef.current, 1, false);
   }, [appliedFilters, performSearch]);
 
   useEffect(() => {
+    // Invalidate a pending response immediately, including during the debounce.
+    requestId.current += 1;
     const timer = setTimeout(() => {
       setPage(1);
       performSearch(query, 1, false);
@@ -290,7 +371,8 @@ export function useSearchEngine(profileId: string) {
     );
   };
 
-  const isSearchActive = query.trim().length > 0 || appliedFilters.genreIds.length > 0;
+  const isSearchActive = query.trim().length > 0 || appliedFilters.genreIds.length > 0 ||
+    (Platform.isTV && (appliedFilters.mediaType !== 'all' || appliedFilters.sortBy !== 'popularity.desc'));
 
   return {
     query,
@@ -306,6 +388,7 @@ export function useSearchEngine(profileId: string) {
     searchHistory,
     trendingItems,
     setTrendingItems,
+    relatedItems,
     filterModalVisible,
     setFilterModalVisible,
     mediaType,

@@ -108,6 +108,7 @@ export default function IMDbNativePlayer({
           ref={videoViewRef}
           style={{ width: playerWidth, height: height }}
           player={player}
+          playsInline={true}
           allowsPictureInPicture={showControls}
           nativeControls={showControls}
           fullscreenOptions={{ enable: showControls, orientation: 'landscape' }}

@@ -220,12 +220,15 @@ function normalizeMediaItem(item: any, fallbackType: MediaType = 'movie'): Media
 const SkeletonMediaHub = () => {
   const anim = useRef(new Animated.Value(0.3)).current;
   useEffect(() => {
-    Animated.loop(
+    if (isTV) return;
+    const animation = Animated.loop(
       Animated.sequence([
         Animated.timing(anim, { toValue: 0.7, duration: 800, useNativeDriver: true }),
         Animated.timing(anim, { toValue: 0.3, duration: 800, useNativeDriver: true }),
       ])
-    ).start();
+    );
+    animation.start();
+    return () => animation.stop();
   }, [anim]);
 
   return (
@@ -313,7 +316,7 @@ const MediaHubCard = React.memo<MediaHubCardProps>(
                 source={{ uri: posterUri }}
                 style={styles.cardImage}
                 contentFit="cover"
-                transition={200}
+                transition={isTV ? 0 : 200}
                 cachePolicy="memory-disk"
               />
             ) : (
@@ -489,7 +492,7 @@ const MediaHubRow = React.memo<MediaHubRowProps>(
             keyExtractor={keyExtractor}
             horizontal
             showsHorizontalScrollIndicator={false}
-            removeClippedSubviews={Platform.OS !== 'web'}
+          removeClippedSubviews={!isTV && Platform.OS !== 'web'}
             contentContainerStyle={[
               styles.rowListContent,
               isDesktopWeb && { paddingHorizontal: 36 },
@@ -1161,7 +1164,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   genrePillText: {
-    fontSize: isTV ? 13 : 12,
+    fontSize: isTV ? 16 : 12,
     fontWeight: '700',
     color: '#E4E4E7',
     includeFontPadding: false,
@@ -1278,7 +1281,7 @@ const styles = StyleSheet.create({
   },
   cardTitle: {
     marginTop: isTV ? 8 : 6,
-    fontSize: isTV ? 14 : 11.5,
+    fontSize: isTV ? 17 : 11.5,
     fontWeight: '700',
     color: '#FFFFFF',
     textAlign: 'center',
@@ -1286,7 +1289,7 @@ const styles = StyleSheet.create({
   },
   cardSubtitle: {
     marginTop: 2,
-    fontSize: isTV ? 12 : 9.5,
+    fontSize: isTV ? 15 : 9.5,
     color: '#8E8E93',
     textAlign: 'center',
     paddingHorizontal: 2,

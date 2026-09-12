@@ -22,6 +22,7 @@ export interface UiState {
   activeTab: TabKey;
   activeDetail: DetailItem | null;
   activeActor: ActorItem | null;
+  previousDetailForActor: DetailItem | null;
   activeVideo: any | null;
   isMiniPlayer: boolean;
   activeWatchParty: WatchPartyRoom | null;
@@ -85,6 +86,7 @@ export const useUiStore = create<UiState>((set, get) => ({
   activeTab: 'home',
   activeDetail: null,
   activeActor: null,
+  previousDetailForActor: null,
   activeVideo: null,
   isMiniPlayer: false,
   activeWatchParty: null,
@@ -125,6 +127,7 @@ export const useUiStore = create<UiState>((set, get) => ({
     set((state) => ({
       activeDetail: detail,
       activeActor: null,
+      previousDetailForActor: null,
       returnToModal: returnTo !== undefined ? returnTo : state.returnToModal,
     }));
   },
@@ -142,15 +145,18 @@ export const useUiStore = create<UiState>((set, get) => ({
   openActor: (actor, preserveReturnTo = true) => {
     set((state) => ({
       activeActor: actor,
+      previousDetailForActor: state.activeDetail || state.previousDetailForActor || null,
       activeDetail: null,
       returnToModal: preserveReturnTo ? state.returnToModal : null,
     }));
   },
 
   closeActor: () => {
-    const { returnToModal } = get();
+    const { returnToModal, previousDetailForActor } = get();
     set({
       activeActor: null,
+      activeDetail: previousDetailForActor || null,
+      previousDetailForActor: null,
       showReelsModal: returnToModal === 'reels',
       showComingSoonModal: returnToModal === 'comingSoon',
       returnToModal: null,

@@ -1,9 +1,11 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import {
   View,
   ActivityIndicator,
   ScrollView,
   Platform,
+  FlatList,
+  StyleSheet,
 } from 'react-native';
 import { FlashList } from '@shopify/flash-list';
 import { Image } from 'expo-image';
@@ -44,6 +46,26 @@ export const SearchResultGrid: React.FC<SearchResultGridProps> = ({
   emptyHintText = 'Film veya dizi adı yazın ya da tür seçin',
   styles,
 }) => {
+  const tvList = useRef<FlatList>(null);
+  if (Platform.isTV) {
+    const rowHeight = cardWidth * 9 / 16 + 74;
+    return <FlatList ref={tvList} data={results} numColumns={numColumns} key={numColumns}
+      keyExtractor={item => item.type + '-' + item.id} removeClippedSubviews={false}
+      initialNumToRender={numColumns * 3} maxToRenderPerBatch={numColumns} windowSize={3}
+      onEndReached={onLoadMore} onEndReachedThreshold={0.5} contentContainerStyle={{ padding: 8, paddingBottom: 32 }}
+      getItemLayout={(_, index) => ({ length: rowHeight, offset: index * rowHeight, index })}
+      ListEmptyComponent={<View style={tv.center}>{loading ? <ActivityIndicator color="#E50914" /> : <ThemedText style={tv.text}>{isSearchActive ? 'Sonuç bulunamadı' : emptyHintText}</ThemedText>}</View>}
+      ListFooterComponent={loading && results.length > 0 ? <ActivityIndicator color="#E50914" /> : null}
+      renderItem={({ item, index }) => <View style={{ width: cardWidth + 16, height: rowHeight, padding: 8 }}>
+        <TVFocusable style={{ width: cardWidth }} accessibilityLabel={item.title}
+          onFocus={() => tvList.current?.scrollToIndex({ index: Math.floor(index / numColumns), viewPosition: 0.35, animated: true })}
+          onPress={() => item.type === 'person' ? onSelectActor?.({ name: item.title, tmdbId: item.tmdbId, profileUrl: item.posterUrl }) : onSelectDetail(item)}>
+          <Image source={{ uri: (item.type === 'person' ? item.posterUrl : item.backdropUrl || item.posterUrl)?.replace(/\/t\/p\/(w\d+|original)\//, '/t/p/w500/') }} style={{ width: '100%', aspectRatio: 16 / 9, backgroundColor: '#222', borderRadius: 6 }} contentFit="cover" cachePolicy="memory-disk" />
+          <ThemedText numberOfLines={1} style={tv.title}>{item.title}</ThemedText>
+          <ThemedText numberOfLines={1} style={tv.meta}>{item.type === 'person' ? 'Oyuncu' : item.type === 'tv' ? 'Dizi' : 'Film'}{item.year ? ' • ' + item.year : ''}</ThemedText>
+        </TVFocusable>
+      </View>} />;
+  }
   const renderResultItem = ({ item }: { item: any }) => {
     if (item.type === 'person') {
       if (!item.posterUrl) return null;
@@ -455,3 +477,5 @@ export const SearchHistoryAndTrending: React.FC<SearchHistoryAndTrendingProps> =
     </>
   );
 };
+
+const tv = StyleSheet.create({ center: { padding: 32, alignItems: 'center' }, text: { color: '#aaa', fontSize: 17 }, title: { color: '#fff', fontSize: 16, marginTop: 6 }, meta: { color: '#aaa', fontSize: 14 } });

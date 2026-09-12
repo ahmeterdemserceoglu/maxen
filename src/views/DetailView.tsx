@@ -5,11 +5,11 @@ import {
   ScrollView,
   StatusBar,
   Animated,
-  findNodeHandle,
   useWindowDimensions,
   Platform,
   Alert,
 } from 'react-native';
+import { getTVNodeHandle } from '@/utils/tvNodeHandle';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -116,6 +116,11 @@ export function DetailView(props: DetailViewProps) {
   const { media, profileId } = props;
   const [playOnTvVisible, setPlayOnTvVisible] = useState(false);
   const [playOnTvMedia, setPlayOnTvMedia] = useState<any>(null);
+  const [detailContentNodeId, setDetailContentNodeId] = useState<number>();
+
+  useEffect(() => {
+    setDetailContentNodeId(undefined);
+  }, [media]);
 
   const handlePlaySeries = () => {
     if (episodes.length === 0 && allEpisodes.length === 0) return;
@@ -334,81 +339,43 @@ export function DetailView(props: DetailViewProps) {
     return (
       <Animated.View style={[styles.containerTV, { opacity: fadeAnim }]}>
         <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
-
-        {/* BACKDROP */}
-        <View pointerEvents="none" style={styles.tvHeroBackground}>
-          <Image
-            source={backdropSource}
-            style={styles.tvHeroImage}
-            contentFit="cover"
-            transition={200}
-            cachePolicy="memory-disk"
-          />
-
-          <LinearGradient
-            colors={[
-              'rgba(0,0,0,0.98)',
-              isMovie ? 'rgba(0,0,0,0.78)' : 'rgba(0,0,0,0.80)',
-              isMovie ? 'rgba(0,0,0,0.30)' : 'rgba(0,0,0,0.25)',
-              isMovie ? 'rgba(0,0,0,0.90)' : 'rgba(0,0,0,0.88)',
-              '#000',
-            ]}
-            locations={[0, isMovie ? 0.28 : 0.30, isMovie ? 0.55 : 0.58, isMovie ? 0.78 : 0.82, 1]}
-            style={StyleSheet.absoluteFillObject}
-          />
-
-          <LinearGradient
-            colors={['rgba(0,0,0,0.95)', 'transparent']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={StyleSheet.absoluteFillObject}
-          />
-        </View>
-
-        {/* TOP BAR */}
-        <View
-          style={[
-            styles.tvTopBar,
-            {
-              paddingHorizontal: isLargeTv ? 72 : 48,
-              paddingTop: screenHeight > 900 ? 28 : 18,
-            },
-          ]}
+        <ScrollView
+          style={{ flex: 1, backgroundColor: '#111' }}
+          contentContainerStyle={{ paddingBottom: 100 }}
+          showsVerticalScrollIndicator={false}
+          directionalLockEnabled
+          nestedScrollEnabled
+          overScrollMode="never"
         >
-          <TVFocusable
-            ref={closeButtonRef}
-            onPress={handleClose}
-            style={[styles.tvCloseButton, { minWidth: 56, minHeight: 56 }]}
-            focusedStyle={styles.tvCloseButtonFocused}
-            nextFocusDown={
-              playButtonRef.current ? findNodeHandle(playButtonRef.current) || undefined : undefined
-            }
-          >
-            <Ionicons name="arrow-back" size={30} color="#fff" />
-          </TVFocusable>
-        </View>
-
-        {/* TV CONTENT: MOVIE vs SERIES */}
-        {isMovie ? (
-          <ScrollView
-            style={styles.tvMainScroll}
-            contentContainerStyle={[
-              styles.tvMovieContent,
-              {
-                paddingHorizontal: isLargeTv ? 72 : 48,
-                paddingTop: screenHeight > 900 ? 92 : 70,
-                paddingBottom: 90,
-              },
-            ]}
-            showsVerticalScrollIndicator={false}
-            directionalLockEnabled
-            scrollEventThrottle={16}
-            nestedScrollEnabled
-            overScrollMode="never"
-          >
+          <View style={{ height: Math.max(500, Math.round(screenHeight * 0.72)), backgroundColor: '#090909' }}>
+            <Image source={backdropSource} style={StyleSheet.absoluteFillObject} contentFit="cover" transition={200} cachePolicy="memory-disk" />
+            <LinearGradient
+              colors={['rgba(0,0,0,0.74)', 'rgba(0,0,0,0.18)', 'rgba(17,17,17,0.96)']}
+              locations={[0, 0.52, 1]}
+              style={StyleSheet.absoluteFillObject}
+            />
+            <LinearGradient
+              colors={['rgba(0,0,0,0.94)', 'rgba(0,0,0,0.52)', 'transparent']}
+              start={{ x: 0, y: 0.5 }}
+              end={{ x: 1, y: 0.5 }}
+              style={StyleSheet.absoluteFillObject}
+            />
+            <View style={{ position: 'absolute', top: 28, right: 38, zIndex: 20 }}>
+              <TVFocusable
+                ref={closeButtonRef}
+                onPress={handleClose}
+                style={[styles.tvCloseButton, { width: 58, height: 58, borderRadius: 29 }]}
+                focusedStyle={styles.tvCloseButtonFocused}
+                nextFocusDown={getTVNodeHandle(playButtonRef)}
+                accessibilityLabel="Detayı kapat"
+              >
+                <Ionicons name="close" size={32} color="#fff" />
+              </TVFocusable>
+            </View>
+            <View style={{ position: 'absolute', left: isLargeTv ? 76 : 52, right: '28%', bottom: 32 }}>
             <DetailHero
               media={media}
-              isMovie={true}
+              isMovie={isMovie}
               isTV={true}
               styles={styles}
               movieRuntime={movieRuntime}
@@ -427,7 +394,9 @@ export function DetailView(props: DetailViewProps) {
               ratingButtonRef={ratingButtonRef}
               closeButtonRef={closeButtonRef}
               actorRefs={actorRefs}
-              onPlay={handlePlayMovie}
+              firstEpisodeRef={firstEpisodeRef}
+              firstContentNodeId={detailContentNodeId}
+              onPlay={isMovie ? handlePlayMovie : handlePlaySeries}
               onToggleFavorite={handleToggleFavorite}
               onToggleWatchLater={handleToggleWatchLater}
               onOpenRatingModal={() => setIsRatingModalOpen(true)}
@@ -437,7 +406,31 @@ export function DetailView(props: DetailViewProps) {
               downloadStatus={downloadInfo?.status || 'idle'}
               downloadProgress={downloadInfo?.progress || 0}
             />
+            </View>
+          </View>
 
+          <View style={{ paddingHorizontal: isLargeTv ? 76 : 52, paddingTop: 28, gap: 34, backgroundColor: '#111' }}>
+            {!isMovie && (
+              <View style={{ height: Math.min(680, Math.max(460, screenHeight * 0.72)) }}>
+                <SeasonEpisodeList
+                  tmdbId={tmdbId}
+                  seasons={seasons}
+                  activeSeason={activeSeason}
+                  episodes={episodes}
+                  loadingEpisodes={loadingEpisodes}
+                  localProgresses={localProgresses}
+                  isTV={true}
+                  styles={styles}
+                  seasonRefs={seasonRefs}
+                  episodeRefs={episodeRefs}
+                  firstEpisodeRef={firstEpisodeRef}
+                  playButtonRef={playButtonRef}
+                  onFirstFocusableResolved={setDetailContentNodeId}
+                  onSeasonChange={handleSeasonChange}
+                  onPlayEpisode={handlePlayEpisode}
+                />
+              </View>
+            )}
             <CastMemberList
               cast={cast}
               isTV={true}
@@ -445,6 +438,7 @@ export function DetailView(props: DetailViewProps) {
               actorRefs={actorRefs}
               playButtonRef={playButtonRef}
               onSelectActor={onSelectActor}
+              onFirstFocusableResolved={isMovie ? setDetailContentNodeId : undefined}
             />
 
             <RecommendationsGrid
@@ -456,124 +450,10 @@ export function DetailView(props: DetailViewProps) {
               onSelectMedia={onSelectMedia}
               onPlayMedia={onPlayMedia}
             />
-          </ScrollView>
-        ) : (
-          <View
-            style={[
-              styles.tvSeriesLayout,
-              {
-                flex: 1,
-                paddingHorizontal: isLargeTv ? 56 : 36,
-                columnGap: isLargeTv ? 32 : 24,
-              },
-            ]}
-          >
-            {/* LEFT COLUMN */}
-            <ScrollView
-              style={[styles.tvSeriesLeftScroll, { flex: 1 }]}
-              contentContainerStyle={[
-                styles.tvSeriesLeftContent,
-                {
-                  paddingVertical: 24,
-                  paddingBottom: 96,
-                },
-              ]}
-              showsVerticalScrollIndicator={false}
-              directionalLockEnabled
-              nestedScrollEnabled
-              overScrollMode="never"
-            >
-              <DetailHero
-                media={media}
-                isMovie={false}
-                isTV={true}
-                styles={styles}
-                movieRuntime={movieRuntime}
-                seasonsCount={seasons.length}
-                genres={genres}
-                genreList={genreList}
-                movieProgress={movieProgress}
-                isFav={isFav}
-                isWatchLater={isWatchLaterState}
-                userRating={userRating}
-                trailerKey={trailerKey}
-                playButtonRef={playButtonRef}
-                trailerButtonRef={trailerButtonRef}
-                favoriteButtonRef={favoriteButtonRef}
-                watchLaterButtonRef={watchLaterButtonRef}
-                ratingButtonRef={ratingButtonRef}
-                closeButtonRef={closeButtonRef}
-                actorRefs={actorRefs}
-                onPlay={handlePlaySeries}
-                onToggleFavorite={handleToggleFavorite}
-                onToggleWatchLater={handleToggleWatchLater}
-                onOpenRatingModal={() => setIsRatingModalOpen(true)}
-                onOpenTrailer={() => setIsTrailerModalOpen(true)}
-                onStartWatchParty={handleStartWatchParty}
-                onDownload={handleDownload}
-                downloadStatus={downloadInfo?.status || 'idle'}
-                downloadProgress={downloadInfo?.progress || 0}
-              />
-
-              <CastMemberList
-                cast={cast}
-                isTV={true}
-                styles={styles}
-                actorRefs={actorRefs}
-                playButtonRef={playButtonRef}
-                onSelectActor={onSelectActor}
-              />
-
-              <RecommendationsGrid
-                collectionData={collectionData}
-                recommendations={recommendations}
-                isTV={true}
-                styles={styles}
-                theme={theme}
-                onSelectMedia={onSelectMedia}
-                onPlayMedia={onPlayMedia}
-              />
-            </ScrollView>
-
-            {/* RIGHT COLUMN (EPISODES) */}
-            <View
-              style={[
-                {
-                  flex: isLargeTv ? 0.42 : 0.46,
-                  minWidth: isLargeTv ? 560 : 460,
-                  maxWidth: isLargeTv ? 760 : 680,
-                },
-              ]}
-            >
-              <SeasonEpisodeList
-                tmdbId={tmdbId}
-                seasons={seasons}
-                activeSeason={activeSeason}
-                episodes={episodes}
-                loadingEpisodes={loadingEpisodes}
-                localProgresses={localProgresses}
-                isTV={true}
-                styles={styles}
-                seasonRefs={seasonRefs}
-                episodeRefs={episodeRefs}
-                firstEpisodeRef={firstEpisodeRef}
-                playButtonRef={playButtonRef}
-                onSeasonChange={handleSeasonChange}
-                onPlayEpisode={handlePlayEpisode}
-              />
-            </View>
           </View>
-        )}
+        </ScrollView>
 
         {/* MODALS */}
-        <RatingModal
-          visible={isRatingModalOpen}
-          onClose={() => setIsRatingModalOpen(false)}
-          currentRating={userRating}
-          onRate={handleRate}
-          mediaTitle={media?.title || media?.name}
-        />
-
         <TrailerModal
           visible={isTrailerModalOpen}
           onClose={() => setIsTrailerModalOpen(false)}
@@ -589,7 +469,7 @@ export function DetailView(props: DetailViewProps) {
    * MOBILE / TABLET / DESKTOP WEB VIEW
    * ============================================================
    */
-  const { width } = useWindowDimensions();
+  const width = screenWidth;
   const isDesktopWeb = Platform.OS === 'web' && width > 768;
 
   return (

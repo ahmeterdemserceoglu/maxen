@@ -1,9 +1,11 @@
+import { getEpisodeProgress, getWatchProgress } from '@/utils/watchProgress';
+import { extractCleanTmdbId } from '@/types/profileMedia';
+import { requestTVFocus } from '@/utils/tvNodeHandle';
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   Platform,
   Animated,
   BackHandler,
-  findNodeHandle,
   useWindowDimensions,
 } from 'react-native';
 import { useTheme } from '@/hooks/use-theme';
@@ -16,6 +18,7 @@ import {
   isWatchLater,
   toggleWatchLater,
   getContinueWatching,
+  subscribeToContinueWatching,
 } from '@/services/profileMediaService';
 import {
   TMDB_BASE_URL,
@@ -66,6 +69,7 @@ export function useDetailState({
   onSelectMedia,
 }: UseDetailStateProps) {
   const { width, height } = useWindowDimensions();
+  const isClosingRef = useRef(false);
   const isTablet = width > 600;
 
   const styles = useMemo(
@@ -111,6 +115,11 @@ export function useDetailState({
   const [loadingEpisodes, setLoadingEpisodes] = useState(false);
   const [movieRuntime, setMovieRuntime] = useState('');
   const [localProgresses, setLocalProgresses] = useState<any[]>([]);
+  useEffect(() => {
+    setLocalProgresses([]);
+    if (!user?.uid || !profileId) return;
+    return subscribeToContinueWatching(user.uid, profileId, setLocalProgresses);
+  }, [user?.uid, profileId]);
   const [allEpisodes, setAllEpisodes] = useState<any[]>([]);
   const [recommendations, setRecommendations] = useState<RecommendationItem[]>([]);
   const [collectionData, setCollectionData] = useState<CollectionData | null>(null);
@@ -281,7 +290,6 @@ export function useDetailState({
       if (user) {
         const cw = await getContinueWatching(user.uid, profileId);
         currentCw = cw || [];
-        setLocalProgresses(currentCw);
       }
 
       if (!tmdbId) {
@@ -469,6 +477,7 @@ export function useDetailState({
    * ============================================================
    */
   useEffect(() => {
+    isClosingRef.current = false;
     loadDetails();
 
     fadeAnim.setValue(0);
@@ -490,14 +499,14 @@ export function useDetailState({
 
     if (isTV) {
       setTimeout(() => {
-        if (closeButtonRef.current) {
-          closeButtonRef.current.focus?.();
-        }
+        requestTVFocus(playButtonRef.current || closeButtonRef.current);
       }, 450);
     }
   }, [media, profileId]);
 
   const handleClose = useCallback(() => {
+    if (isClosingRef.current) return;
+    isClosingRef.current = true;
     Animated.parallel([
       Animated.timing(fadeAnim, {
         toValue: 0,
@@ -558,13 +567,13 @@ export function useDetailState({
    */
   const focusPlay = () => {
     setTimeout(() => {
-      playButtonRef.current?.focus?.();
+      requestTVFocus(playButtonRef);
     }, 30);
   };
 
   const focusFirstEpisode = () => {
     setTimeout(() => {
-      firstEpisodeRef.current?.focus?.();
+      requestTVFocus(firstEpisodeRef);
     }, 30);
   };
 
@@ -591,13 +600,12 @@ export function useDetailState({
     if (isTV) {
       const focusAfterRender = () => {
         const unfinishedIndex = newEpisodes.findIndex((ep) => {
-          const epId = String(ep.Id || ep.id);
-          const progress = localProgresses.find((p) => String(p.Id || p.id) === epId)?.progress || 0;
+          const progress = getEpisodeProgress(localProgresses, tmdbId, ep, seasonNum);
           return progress > 0 && progress < 0.95;
         });
         const targetIndex = unfinishedIndex >= 0 ? unfinishedIndex : 0;
         const target = episodeRefs.current[targetIndex] || firstEpisodeRef.current;
-        target?.focus?.();
+        requestTVFocus(target);
       };
       requestAnimationFrame(() => requestAnimationFrame(focusAfterRender));
     }
@@ -701,9 +709,9 @@ export function useDetailState({
       };
 
   const movieProgressObj = localProgresses.find(
-    (p) => p.id === (media.id || media.Id)
+    (p) => extractCleanTmdbId(p) === extractCleanTmdbId(media) && p.type === (isMovie ? 'movie' : 'tv')
   );
-  const movieProgress = movieProgressObj?.progress || 0;
+  const movieProgress = getWatchProgress(movieProgressObj);
 
   const genreList =
     genres

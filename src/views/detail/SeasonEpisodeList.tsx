@@ -1,9 +1,10 @@
+import { TVEpisodePanel } from './TVEpisodePanel';
 import React from 'react';
+import { getEpisodeProgress } from '@/utils/watchProgress';
 import {
   View,
   ScrollView,
   ActivityIndicator,
-  findNodeHandle,
   TouchableOpacity,
 } from 'react-native';
 import { Image } from 'expo-image';
@@ -26,34 +27,15 @@ export interface SeasonEpisodeListProps {
   episodeRefs?: any;
   firstEpisodeRef?: any;
   playButtonRef?: any;
+  onFirstFocusableResolved?: (nodeId: number) => void;
   onSeasonChange: (season: any) => void;
   onPlayEpisode: (episode: any) => void;
   onDownloadEpisode?: (episode: any) => void;
   downloadedEpisodeKeys?: Record<string, string>;
 }
 
-export function formatEpisodeTitle(epNum: number, rawTitle?: string): string {
-  if (!rawTitle || !rawTitle.trim()) return `${epNum}. Bölüm`;
-  const trimmed = rawTitle.trim();
-
-  // "2. Bölüm", "2.Bölüm", "Bölüm 2", "Episode 2", "Ep. 2", "2" gibi tekrarları yakala
-  const isGenericEpisodeTitle =
-    new RegExp(`^(?:${epNum}\\.?\\s*)?(?:bölüm|episode|ep\\.?)\\s*${epNum}?$`, 'i').test(trimmed) ||
-    new RegExp(`^${epNum}\\.?\\s*bölüm$`, 'i').test(trimmed) ||
-    trimmed === String(epNum);
-
-  if (isGenericEpisodeTitle) {
-    return `${epNum}. Bölüm`;
-  }
-
-  // Eğer başlık zaten "2. " veya "2 - " ile başlıyorsa çift numara olmasını engelle (örn: "2. Kış Geliyor" -> "2. Kış Geliyor")
-  const prefixMatch = trimmed.match(new RegExp(`^${epNum}[.\\-\\s:]+\\s*(.+)`, 'i'));
-  if (prefixMatch && prefixMatch[1]) {
-    return `${epNum}. ${prefixMatch[1].trim()}`;
-  }
-
-  return `${epNum}. ${trimmed}`;
-}
+import { formatEpisodeTitle } from '@/utils/episodeUtils';
+export { formatEpisodeTitle };
 
 export function SeasonEpisodeList({
   tmdbId,
@@ -68,6 +50,7 @@ export function SeasonEpisodeList({
   episodeRefs,
   firstEpisodeRef,
   playButtonRef,
+  onFirstFocusableResolved,
   onSeasonChange,
   onPlayEpisode,
   onDownloadEpisode,
@@ -76,7 +59,7 @@ export function SeasonEpisodeList({
   const targetTmdbId = tmdbId || episodes?.[0]?.show_id || episodes?.[0]?.tmdbId;
 
   React.useEffect(() => {
-    if (!episodes || episodes.length === 0) return;
+    if (isTV || !episodes || episodes.length === 0) return;
     if (!targetTmdbId) return;
 
     // Preheat first episode
@@ -121,246 +104,28 @@ export function SeasonEpisodeList({
   const getEpisodeNumber = React.useCallback((episode: any, index: number) =>
     Number(episode?.episode_number ?? episode?.IndexNumber ?? index + 1), []);
   const getProgress = React.useCallback((episode: any) => {
-    const id = getEpisodeId(episode);
-    const progressItem = localProgresses.find((p: any) => String(p?.Id ?? p?.id ?? '') === id);
-    return Number(progressItem?.progress ?? 0);
-  }, [getEpisodeId, localProgresses]);
+    return getEpisodeProgress(localProgresses, targetTmdbId, episode, activeSeasonNumber);
+  }, [targetTmdbId, activeSeasonNumber, localProgresses]);
 
-  const preferredFocusIndex = Math.max(
-    0,
-    episodes.findIndex((episode: any) => {
-      const progress = getProgress(episode);
-      return progress > 0 && progress < 0.95;
-    })
-  );
-
-  React.useEffect(() => {
-    if (!isTV) return;
-    episodeRefs.current = {};
-    if (firstEpisodeRef) firstEpisodeRef.current = null;
-  }, [activeSeasonNumber, isTV, episodeRefs, firstEpisodeRef]);
-
-  React.useEffect(() => {
-    if (!isTV || loadingEpisodes || episodes.length === 0) return;
-
-    const focusTarget = () => {
-      const target = episodeRefs?.current?.[preferredFocusIndex] || firstEpisodeRef?.current;
-      target?.focus?.();
-    };
-
-    requestAnimationFrame(() => requestAnimationFrame(focusTarget));
-  }, [episodes, loadingEpisodes, activeSeasonNumber, preferredFocusIndex, isTV, episodeRefs, firstEpisodeRef]);
-
-  if (isTV) {
-    return (
-      <View style={styles.tvEpisodePanel}>
-        <View style={styles.tvSeasonHeader}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-            <ThemedText style={styles.tvEpisodeTitle}>Bölümler</ThemedText>
-            <ThemedText style={{ color: '#8f8f8f', fontSize: 15, fontWeight: '600' }}>
-              {episodes.length > 0 ? `${episodes.length} bölüm` : 'Bölüm bulunamadı'}
-            </ThemedText>
-          </View>
-
-          <ScrollView
-            ref={seasonScrollRef}
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            directionalLockEnabled
-            contentContainerStyle={{ paddingRight: 24, gap: 10 }}
-          >
-            {seasons.map((season, index) => {
-              const seasonNum = Number(season?.season_number ?? season?.IndexNumber ?? index + 1);
-              const active = seasonNum === activeSeasonNumber;
-              const previousSeason = seasonRefs?.current?.[index - 1];
-              const nextSeason = seasonRefs?.current?.[index + 1];
-
-              return (
-                <TVFocusable
-                  key={`season-${seasonNum}`}
-                  ref={(ref) => {
-                    if (seasonRefs?.current) seasonRefs.current[index] = ref;
-                  }}
-                  onFocus={() => {
-                    const x = Math.max(0, index * 120 - 80);
-                    seasonScrollRef.current?.scrollTo({ x, animated: true });
-                  }}
-                  onPress={() => onSeasonChange(season)}
-                  style={[styles.tvSeasonTab, active && styles.tvSeasonActive, { minWidth: 112, height: 48, justifyContent: 'center' }]}
-                  focusedStyle={{
-                    ...styles.tvSeasonFocused,
-                    transform: [{ scale: 1.05 }],
-                    borderWidth: 2.5,
-                    borderColor: '#FFFFFF',
-                  }}
-                  nextFocusLeft={previousSeason ? findNodeHandle(previousSeason) || undefined : undefined}
-                  nextFocusRight={nextSeason ? findNodeHandle(nextSeason) || undefined : undefined}
-                  nextFocusDown={firstEpisodeRef?.current ? findNodeHandle(firstEpisodeRef.current) || undefined : undefined}
-                  nextFocusUp={playButtonRef?.current ? findNodeHandle(playButtonRef.current) || undefined : undefined}
-                >
-                  <ThemedText style={[styles.tvSeasonText, active && styles.tvSeasonTextActive]}>
-                    {seasonNum}. Sezon
-                  </ThemedText>
-                </TVFocusable>
-              );
-            })}
-          </ScrollView>
-        </View>
-
-        {loadingEpisodes ? (
-          <View style={[styles.tvLoadingEpisodes, { minHeight: 260 }]}>
-            <ActivityIndicator size="large" color="#E50914" />
-            <ThemedText style={{ color: '#999', marginTop: 12, fontSize: 16 }}>Bölümler yükleniyor…</ThemedText>
-          </View>
-        ) : episodes.length === 0 ? (
-          <View style={{ minHeight: 180, alignItems: 'center', justifyContent: 'center' }}>
-            <Ionicons name="film-outline" size={42} color="#555" />
-            <ThemedText style={{ color: '#888', marginTop: 12, fontSize: 16 }}>Bu sezonda bölüm bulunamadı.</ThemedText>
-          </View>
-        ) : (
-          <ScrollView
-            style={styles.tvEpisodeScroll}
-            contentContainerStyle={[styles.tvEpisodeContent, { paddingBottom: 28, gap: 12 }]}
-            showsVerticalScrollIndicator
-            directionalLockEnabled
-            nestedScrollEnabled
-            overScrollMode="never"
-          >
-            {episodes.map((episode, index) => {
-              const episodeId = getEpisodeId(episode) || `episode-${index}`;
-              const epNum = getEpisodeNumber(episode, index);
-              const epTitle = formatEpisodeTitle(epNum, episode?.name || episode?.Name);
-              const epOverview = episode?.overview || episode?.Overview;
-              const progress = getProgress(episode);
-              const thumbnail = episode?.still_path
-                ? `${TMDB_IMAGE_BASE_URL}/w780${episode.still_path}`
-                : null;
-
-              const previousEpisode = episodeRefs?.current?.[index - 1];
-              const nextEpisode = episodeRefs?.current?.[index + 1];
-              const isPreferred = index === preferredFocusIndex;
-
-              return (
-                <TVFocusable
-                  key={`${activeSeasonNumber}-${episodeId}-${index}`}
-                  ref={(ref) => {
-                    if (episodeRefs?.current) episodeRefs.current[index] = ref;
-                    if (index === preferredFocusIndex && firstEpisodeRef) {
-                      firstEpisodeRef.current = ref;
-                    }
-                  }}
-                  onFocus={() => {
-                    // Focuslanan bölümü panel içinde görünür tut.
-                    const node = episodeRefs?.current?.[index];
-                    if (node?.measureLayout && episodeRefs?.current?.[0]) {
-                      // Native TV'de ScrollView doğal olarak reveal eder; manuel scroll sadece fallback.
-                    }
-                  }}
-                  onPress={() => onPlayEpisode(episode)}
-                  style={[styles.tvEpisodeCard, { borderRadius: 10, overflow: 'hidden', minHeight: 128, backgroundColor: '#161c24' }]}
-                  focusedStyle={{
-                    borderWidth: 2.5,
-                    borderColor: '#E50914',
-                    transform: [{ scale: 1.015 }],
-                    borderRadius: 10,
-                    backgroundColor: 'rgba(229, 9, 20, 0.12)',
-                  }}
-                  nextFocusUp={
-                    index === 0
-                      ? (seasonRefs?.current?.[Math.max(0, seasons.findIndex((s: any) => Number(s?.season_number ?? s?.IndexNumber ?? 1) === activeSeasonNumber))]
-                          ? findNodeHandle(seasonRefs.current[Math.max(0, seasons.findIndex((s: any) => Number(s?.season_number ?? s?.IndexNumber ?? 1) === activeSeasonNumber))]) || undefined
-                          : undefined)
-                      : previousEpisode
-                        ? findNodeHandle(previousEpisode) || undefined
-                        : undefined
-                  }
-                  nextFocusDown={nextEpisode ? findNodeHandle(nextEpisode) || undefined : undefined}
-                  nextFocusLeft={undefined}
-                  nextFocusRight={undefined}
-                >
-                  {({ focused }) => (
-                    <View style={[styles.tvEpisodeMain, { flexDirection: 'row', gap: 16, padding: 12, alignItems: 'center', minHeight: 128 }]}> 
-                      <View style={{ width: 200, height: 112, position: 'relative', borderRadius: 8, overflow: 'hidden', backgroundColor: '#10141a' }}>
-                        {thumbnail ? (
-                          <Image
-                            source={{ uri: thumbnail }}
-                            style={{ width: '100%', height: '100%' }}
-                            contentFit="cover"
-                            transition={120}
-                            cachePolicy="memory-disk"
-                            recyclingKey={episodeId}
-                          />
-                        ) : (
-                          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-                            <Ionicons name="play-outline" size={34} color="#666" />
-                          </View>
-                        )}
-
-                        <View style={{ position: 'absolute', left: 10, top: 10, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 5, backgroundColor: 'rgba(0,0,0,0.82)' }}>
-                          <ThemedText style={{ color: '#fff', fontSize: 13, fontWeight: '800' }}>B{epNum}</ThemedText>
-                        </View>
-
-                        {focused && (
-                          <View style={{ position: 'absolute', inset: 0, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.34)' } as any}>
-                            <View style={{ width: 54, height: 54, borderRadius: 27, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.62)' }}>
-                              <Ionicons name="play" size={28} color="#fff" />
-                            </View>
-                          </View>
-                        )}
-
-                        {progress > 0 && progress < 0.95 && (
-                          <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: 5, backgroundColor: 'rgba(255,255,255,0.25)' }}>
-                            <View style={{ width: `${Math.min(100, Math.max(0, progress * 100))}%`, height: '100%', backgroundColor: '#E50914' }} />
-                          </View>
-                        )}
-                      </View>
-
-                      <View style={{ flex: 1, minWidth: 0, paddingVertical: 4 }}>
-                        <ThemedText
-                          style={[styles.tvEpisodeName, focused && styles.tvEpisodeNameFocused, { fontSize: 20, fontWeight: '800', marginBottom: 8 }]}
-                          numberOfLines={2}
-                        >
-                          {epTitle}
-                        </ThemedText>
-                        {!!episode.runtime && (
-                          <ThemedText style={[styles.tvEpisodeRuntime, { fontSize: 15, color: '#999', marginBottom: 8 }]}>
-                            {episode.runtime} dk
-                          </ThemedText>
-                        )}
-                        {!!epOverview && (
-                          <ThemedText style={[styles.tvEpisodeOverview, { fontSize: 15, lineHeight: 22, color: '#C8C8C8' }]} numberOfLines={3}>
-                            {epOverview}
-                          </ThemedText>
-                        )}
-                      </View>
-
-                      {onDownloadEpisode && (
-                        <TouchableOpacity
-                          onPress={(e) => {
-                            e.stopPropagation?.();
-                            onDownloadEpisode(episode);
-                          }}
-                          focusable={false}
-                          hitSlop={{ top: 14, bottom: 14, left: 14, right: 14 }}
-                          style={{ width: 52, height: 52, alignItems: 'center', justifyContent: 'center' }}
-                        >
-                          <Ionicons
-                            name="arrow-down-circle-outline"
-                            size={30}
-                            color="#aaa"
-                          />
-                        </TouchableOpacity>
-                      )}
-                    </View>
-                  )}
-                </TVFocusable>
-              );
-            })}
-          </ScrollView>
-        )}
-      </View>
-    );
-  }
+  if (isTV) return <TVEpisodePanel {...{
+  tmdbId,
+  seasons,
+  activeSeason,
+  episodes,
+  loadingEpisodes,
+  localProgresses,
+  isTV,
+  styles,
+  seasonRefs,
+  episodeRefs,
+  firstEpisodeRef,
+  playButtonRef,
+  onFirstFocusableResolved,
+  onSeasonChange,
+  onPlayEpisode,
+  onDownloadEpisode,
+  downloadedEpisodeKeys,
+}} />;
 
   /*
    * ============================================================
@@ -426,10 +191,7 @@ export function SeasonEpisodeList({
               ? `${TMDB_IMAGE_BASE_URL}/w300${episode.still_path}`
               : null;
 
-            const progressObj = localProgresses.find(
-              (p) => p.id === (episode.Id || episode.id)
-            );
-            const progress = progressObj?.progress || 0;
+            const progress = getProgress(episode);
 
             return (
               <TVFocusable

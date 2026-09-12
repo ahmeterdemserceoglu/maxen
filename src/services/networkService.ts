@@ -1,4 +1,4 @@
-import { AppState, AppStateStatus } from 'react-native';
+import { AppState, AppStateStatus, Platform } from 'react-native';
 
 type NetworkListener = (isOnline: boolean) => void;
 
@@ -13,6 +13,16 @@ class NetworkService {
   }
 
   private init() {
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      this.isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true;
+      window.addEventListener('online', () => {
+        this.updateStatus(true);
+      });
+      window.addEventListener('offline', () => {
+        this.updateStatus(false);
+      });
+    }
+
     this.checkConnectivity();
 
     AppState.addEventListener('change', (nextState: AppStateStatus) => {
@@ -45,6 +55,32 @@ class NetworkService {
 
     this.currentCheckPromise = (async () => {
       try {
+        if (Platform.OS === 'web' && typeof window !== 'undefined') {
+          // Tarayıcı ortamında cross-origin Google generate_204 isteği CORS hatası verir.
+          // Tarayıcının yerleşik navigator.onLine durumunu ve same-origin probe kontrolünü kullanıyoruz.
+          if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+            this.updateStatus(false);
+            return false;
+          }
+          try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 2500);
+            const res = await fetch('/favicon.png?_t=' + Date.now(), {
+              method: 'HEAD',
+              cache: 'no-store',
+              signal: controller.signal,
+            });
+            clearTimeout(timeoutId);
+            const status = res.ok || res.status === 200 || res.status === 304;
+            this.updateStatus(status);
+            return status;
+          } catch {
+            const status = typeof navigator !== 'undefined' ? navigator.onLine : false;
+            this.updateStatus(status);
+            return status;
+          }
+        }
+
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 2500);
 

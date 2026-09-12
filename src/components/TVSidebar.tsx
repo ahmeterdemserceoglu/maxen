@@ -6,12 +6,13 @@ import {
   Animated,
   Easing,
   Platform,
-  findNodeHandle,
 } from 'react-native';
+import { getTVNodeHandle } from '@/utils/tvNodeHandle';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { TVFocusable } from '@/components/TVFocusable';
+import { TVFocusGroup } from '@/components/TVFocusGroup';
 import { type Profile } from '@/types/profile';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useUiStore } from '@/store/uiStore';
@@ -53,7 +54,6 @@ export function TVSidebar({
   const insets = useSafeAreaInsets();
   const setShowJoinPartyModal = useUiStore((state) => state.setShowJoinPartyModal);
   const pendingFriendRequestsCount = useUiStore((state) => state.pendingFriendRequestsCount);
-  const heroPlayBtnNodeId = useUiStore((state) => state.heroPlayBtnNodeId);
   const setSidebarActiveNodeId = useUiStore((state) => state.setSidebarActiveNodeId);
 
   const [isExpanded, setIsExpanded] = useState(false);
@@ -61,6 +61,8 @@ export function TVSidebar({
 
   const collapseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const tabRefs = useRef<Record<string, any>>({});
+  const profileRef = useRef<any>(null);
+  const watchPartyRef = useRef<any>(null);
 
   // 100% Native Driver Animations (ZERO JS-thread layout calculations, silky 60fps)
   const backdropTranslateXAnim = useRef(new Animated.Value(BACKDROP_OFFSET)).current;
@@ -72,14 +74,14 @@ export function TVSidebar({
   useEffect(() => {
     const activeEl = tabRefs.current[activeTab];
     if (activeEl) {
-      try {
-        const id = findNodeHandle(activeEl);
-        if (id) {
-          setSidebarActiveNodeId(id);
-        }
-      } catch (e) {}
+      const id = getTVNodeHandle(activeEl);
+      if (id) {
+        setSidebarActiveNodeId(id);
+      }
     }
   }, [activeTab, setSidebarActiveNodeId]);
+
+  useEffect(() => () => setSidebarActiveNodeId(null), [setSidebarActiveNodeId]);
 
   const handleItemFocus = useCallback((key: string) => {
     if (collapseTimerRef.current) {
@@ -168,7 +170,10 @@ export function TVSidebar({
   const bottomInset = Math.max(insets.bottom, 20);
 
   return (
-    <View
+    <TVFocusGroup
+      trapFocusLeft
+      trapFocusUp
+      trapFocusDown
       style={[
         styles.outerContainer,
         {
@@ -240,6 +245,7 @@ export function TVSidebar({
       {activeProfile && (
         <View style={styles.profileSection}>
           <TVFocusable
+            ref={profileRef}
             onFocus={() => handleItemFocus('profile')}
             onBlur={() => handleItemBlur('profile')}
             onPress={() => {
@@ -247,7 +253,7 @@ export function TVSidebar({
                 onChangeProfile();
               }
             }}
-            nextFocusRight={heroPlayBtnNodeId || undefined}
+            nextFocusDown={getTVNodeHandle(tabRefs.current[TV_NAV_ITEMS[0].key])}
             style={styles.profileButton}
             focusedStyle={styles.profileButtonFocused}
             accessibilityLabel={`Profil: ${activeProfile.name}`}
@@ -308,9 +314,15 @@ export function TVSidebar({
 
       {/* MIDDLE: Navigation Tabs List */}
       <View style={styles.navList}>
-        {TV_NAV_ITEMS.map((tab) => {
+        {TV_NAV_ITEMS.map((tab, index) => {
           const isActive = activeTab === tab.key;
           const isItemFocused = focusedKey === tab.key;
+          const previousNode = index === 0
+            ? getTVNodeHandle(profileRef)
+            : getTVNodeHandle(tabRefs.current[TV_NAV_ITEMS[index - 1].key]);
+          const nextNode = index === TV_NAV_ITEMS.length - 1
+            ? getTVNodeHandle(watchPartyRef)
+            : getTVNodeHandle(tabRefs.current[TV_NAV_ITEMS[index + 1].key]);
 
           return (
             <TVFocusable
@@ -321,7 +333,8 @@ export function TVSidebar({
               onFocus={() => handleItemFocus(tab.key)}
               onBlur={() => handleItemBlur(tab.key)}
               onPress={() => onTabSelect(tab.key)}
-              nextFocusRight={heroPlayBtnNodeId || undefined}
+              nextFocusUp={previousNode}
+              nextFocusDown={nextNode}
               style={[
                 styles.navItem,
                 isActive && !isItemFocused && isExpanded && styles.navItemActive,
@@ -396,10 +409,11 @@ export function TVSidebar({
 
         {/* Watch Party / Birlikte İzle Katıl Butonu */}
         <TVFocusable
+          ref={watchPartyRef}
           onFocus={() => handleItemFocus('watchparty')}
           onBlur={() => handleItemBlur('watchparty')}
           onPress={() => setShowJoinPartyModal(true)}
-          nextFocusRight={heroPlayBtnNodeId || undefined}
+          nextFocusUp={getTVNodeHandle(tabRefs.current[TV_NAV_ITEMS[TV_NAV_ITEMS.length - 1].key])}
           style={styles.navItem}
           focusedStyle={styles.navItemFocused}
           accessibilityLabel="Birlikte İzle"
@@ -453,7 +467,7 @@ export function TVSidebar({
       >
         <Text style={styles.footerHintText}>Maxen TV</Text>
       </Animated.View>
-    </View>
+    </TVFocusGroup>
   );
 }
 

@@ -68,7 +68,7 @@ class MainActivity : ReactActivity() {
    * to ensure media controls (Play/Pause, Rewind, Fast Forward, Channel Up/Down) work seamlessly on Android TV.
    */
   override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
-    if (event.action == android.view.KeyEvent.ACTION_DOWN) {
+    if (event.action == android.view.KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
       val eventType = when (event.keyCode) {
         android.view.KeyEvent.KEYCODE_DPAD_UP -> "up"
         android.view.KeyEvent.KEYCODE_DPAD_DOWN -> "down"
@@ -98,6 +98,25 @@ class MainActivity : ReactActivity() {
         emitTvKeyEvent(eventType, event.keyCode, event.action)
       }
     }
+
+    val isMediaShortcut = when (event.keyCode) {
+      android.view.KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE,
+      android.view.KeyEvent.KEYCODE_HEADSETHOOK,
+      android.view.KeyEvent.KEYCODE_MEDIA_PLAY,
+      android.view.KeyEvent.KEYCODE_MEDIA_PAUSE,
+      android.view.KeyEvent.KEYCODE_MEDIA_FAST_FORWARD,
+      android.view.KeyEvent.KEYCODE_MEDIA_SKIP_FORWARD,
+      android.view.KeyEvent.KEYCODE_MEDIA_REWIND,
+      android.view.KeyEvent.KEYCODE_MEDIA_SKIP_BACKWARD,
+      android.view.KeyEvent.KEYCODE_MEDIA_NEXT,
+      android.view.KeyEvent.KEYCODE_MEDIA_PREVIOUS,
+      android.view.KeyEvent.KEYCODE_CHANNEL_UP,
+      android.view.KeyEvent.KEYCODE_CHANNEL_DOWN,
+      android.view.KeyEvent.KEYCODE_MENU,
+      android.view.KeyEvent.KEYCODE_INFO -> true
+      else -> false
+    }
+    if (isMediaShortcut) return true
     return super.dispatchKeyEvent(event)
   }
 

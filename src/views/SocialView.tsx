@@ -1,3 +1,5 @@
+import { TVTextInput } from '@/components/TVFormControls';
+import { TVTouchable } from '@/components/TVTouchable';
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   View,
@@ -403,7 +405,7 @@ export function SocialView() {
         {/* Search Bar */}
         <View style={styles.searchBar}>
           <Ionicons name="search" size={15} color="#71717A" style={{ marginRight: 8 }} />
-          <TextInput
+          <TVTextInput
             style={styles.searchInput}
             value={searchFriendQuery}
             onChangeText={setSearchFriendQuery}
@@ -412,9 +414,9 @@ export function SocialView() {
             autoCorrect={false}
           />
           {searchFriendQuery.length > 0 && (
-            <TouchableOpacity onPress={() => setSearchFriendQuery('')}>
+            <TVTouchable onPress={() => setSearchFriendQuery('')}>
               <Ionicons name="close-circle" size={16} color="#A1A1AA" />
-            </TouchableOpacity>
+            </TVTouchable>
           )}
         </View>
 
@@ -562,7 +564,7 @@ export function SocialView() {
                       source={{ uri: posterUrl }}
                       style={styles.watchingPoster}
                       contentFit="cover"
-                      transition={200}
+                      transition={isTV ? 0 : 200}
                       cachePolicy="memory-disk"
                     />
                   ) : (
@@ -605,7 +607,7 @@ export function SocialView() {
               )}
 
               {/* Action row with Direct Message button */}
-              <View style={{ flexDirection: 'row', justifyContent: 'flex-end', paddingHorizontal: 12, paddingBottom: 8, gap: 8 }}>
+              {!isTV && <View style={{ flexDirection: 'row', justifyContent: 'flex-end', paddingHorizontal: 12, paddingBottom: 8, gap: 8 }}>
                 <TVFocusable
                   onPress={() => setActiveDmFriend({
                     uid: item.friendUid,
@@ -627,7 +629,7 @@ export function SocialView() {
                   <Ionicons name="chatbubble-ellipses-outline" size={13} color="#D1D5DB" />
                   <Text style={{ color: '#E5E7EB', fontSize: 11, fontWeight: '600' }}>Mesaj</Text>
                 </TVFocusable>
-              </View>
+              </View>}
             </View>
           );
         }}
@@ -694,7 +696,7 @@ export function SocialView() {
             {/* Input */}
             <View style={styles.inputWrap}>
               <Text style={styles.atPrefix}>@</Text>
-              <TextInput
+              <TVTextInput
                 style={styles.textInputBox}
                 value={searchQuery}
                 onChangeText={handleSearchUsers}
@@ -950,7 +952,7 @@ const styles = StyleSheet.create({
     letterSpacing: 2.5,
   },
   headerAccountHandle: {
-    fontSize: 12,
+    fontSize: isTV ? 15 : 12,
     fontWeight: '600',
     color: '#A1A1AA',
     marginTop: 2,
@@ -1185,7 +1187,7 @@ const styles = StyleSheet.create({
   },
   userHandleText: {
     color: '#71717A',
-    fontSize: 12,
+    fontSize: isTV ? 15 : 12,
     fontWeight: '500',
     marginTop: 1,
   },
@@ -1419,7 +1421,7 @@ const styles = StyleSheet.create({
   textInputBox: {
     flex: 1,
     color: '#FFFFFF',
-    fontSize: 14,
+    fontSize: isTV ? 17 : 14,
     fontWeight: '600',
     paddingVertical: 10,
   },
@@ -1447,7 +1449,7 @@ const styles = StyleSheet.create({
   },
   resultAvatarLetter: {
     color: '#FFFFFF',
-    fontSize: 14,
+    fontSize: isTV ? 17 : 14,
     fontWeight: '800',
   },
   resultInfoCol: {
@@ -1531,7 +1533,7 @@ const styles = StyleSheet.create({
   },
   modalEmptyMuted: {
     color: '#71717A',
-    fontSize: 12,
+    fontSize: isTV ? 15 : 12,
   },
   requestCardRow: {
     flexDirection: 'row',

@@ -1,10 +1,9 @@
-import React, { useEffect, useRef } from 'react';
+import { TVModalSurface } from '@/components/TVModalSurface';
+import React, { useRef } from 'react';
 import {
   View,
   StyleSheet,
-  ScrollView,
-  BackHandler,
-  Platform,
+  FlatList,
   useWindowDimensions,
 } from 'react-native';
 import { Image } from 'expo-image';
@@ -61,34 +60,9 @@ export function TVQuickControlsOverlay({
   seriesTitle = 'Dizi Bölümleri',
 }: TVQuickControlsOverlayProps) {
   const { width } = useWindowDimensions();
-  const autoCloseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // Otomatik kapanma zamanlayıcısı (4.5 saniye hareketsizlikte kapanır)
-  const resetAutoClose = () => {
-    if (autoCloseTimer.current) clearTimeout(autoCloseTimer.current);
-    autoCloseTimer.current = setTimeout(() => {
-      onClose();
-    }, 4500);
-  };
-
-  useEffect(() => {
-    if (visibleMode === 'none') {
-      if (autoCloseTimer.current) clearTimeout(autoCloseTimer.current);
-      return;
-    }
-
-    resetAutoClose();
-
-    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-      onClose();
-      return true;
-    });
-
-    return () => {
-      if (autoCloseTimer.current) clearTimeout(autoCloseTimer.current);
-      sub.remove();
-    };
-  }, [visibleMode, onClose]);
+  const episodeList = useRef<FlatList>(null);
+  // Settings stay open until a selection or Back; reading time is not limited.
+  const resetAutoClose = () => {};
 
   if (visibleMode === 'none') return null;
 
@@ -111,6 +85,7 @@ export function TVQuickControlsOverlay({
     };
 
     const cycleQuality = () => {
+      if (qualityList.length === 0) return;
       const curIdx = qualityList.findIndex((q) => q === currentQuality);
       const nextIdx = (curIdx + 1) % qualityList.length;
       onSelectQuality?.(qualityList[nextIdx]);
@@ -140,8 +115,9 @@ export function TVQuickControlsOverlay({
     };
 
     return (
+      <TVModalSurface onClose={onClose} style={StyleSheet.absoluteFill}>
       <View style={styles.topBarContainer} pointerEvents="box-none">
-        <View style={styles.topBarPill}>
+        <View style={[styles.topBarPill, { maxWidth: width - 64, flexWrap: 'wrap' }]}>
           {/* Audio Quick Pill */}
           <TVFocusable
             hasTVPreferredFocus={true}
@@ -198,8 +174,10 @@ export function TVQuickControlsOverlay({
               <ThemedText style={styles.pillValue}>{aspectLabels[aspectRatioMode]}</ThemedText>
             </View>
           </TVFocusable>
+          <TVFocusable style={styles.quickPill} onPress={onClose}><ThemedText style={styles.pillValue}>Kapat</ThemedText></TVFocusable>
         </View>
       </View>
+      </TVModalSurface>
     );
   }
 
@@ -207,6 +185,7 @@ export function TVQuickControlsOverlay({
   if (visibleMode === 'bottomShelf') {
     if (!playlist || playlist.length === 0) {
       return (
+        <TVModalSurface onClose={onClose} style={StyleSheet.absoluteFill}>
         <View style={styles.bottomShelfContainer} pointerEvents="box-none">
           <View style={styles.emptyShelfCard}>
             <Ionicons name="film-outline" size={24} color="#E50914" style={{ marginRight: 10 }} />
@@ -214,24 +193,35 @@ export function TVQuickControlsOverlay({
               Film Modu • Bu içerik tek bölümlüdür
             </ThemedText>
           </View>
+          <TVFocusable hasTVPreferredFocus onPress={onClose}><ThemedText style={styles.pillValue}>Kapat</ThemedText></TVFocusable>
         </View>
+        </TVModalSurface>
       );
     }
 
     return (
-      <View style={styles.bottomShelfContainer} pointerEvents="box-none">
+      <TVModalSurface onClose={onClose} style={StyleSheet.absoluteFill}>
+        <View style={styles.bottomShelfContainer} pointerEvents="box-none">
         <View style={styles.shelfHeader}>
           <Ionicons name="layers" size={18} color="#E50914" style={{ marginRight: 8 }} />
           <ThemedText style={styles.shelfTitle}>{seriesTitle}</ThemedText>
           <ThemedText style={styles.shelfSubtitle}>Hızlı Bölüm Seçimi</ThemedText>
         </View>
 
-        <ScrollView
+        <FlatList
+          ref={episodeList}
+          data={playlist}
+          keyExtractor={(ep, index) => String(ep.id ?? ep.Id ?? index)}
+          initialScrollIndex={Math.max(0, Math.min(currentEpisodeIndex, playlist.length - 1))}
+          initialNumToRender={6}
+          maxToRenderPerBatch={3}
+          windowSize={3}
+          removeClippedSubviews={false}
+          getItemLayout={(_, index) => ({ length: 214, offset: 36 + index * 214, index })}
           horizontal
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.shelfScrollContent}
-        >
-          {playlist.map((ep, idx) => {
+          renderItem={({ item: ep, index: idx }) => {
             const isCurrent = idx === currentEpisodeIndex;
             const stillUrl = ep.still_path
               ? `https://image.tmdb.org/t/p/w300${ep.still_path}`
@@ -244,6 +234,7 @@ export function TVQuickControlsOverlay({
               <TVFocusable
                 key={idx}
                 hasTVPreferredFocus={isCurrent}
+                onFocus={() => episodeList.current?.scrollToIndex({ index: idx, viewPosition: 0.5, animated: true })}
                 onPress={() => {
                   onSelectEpisode?.(idx);
                   onClose();
@@ -275,9 +266,11 @@ export function TVQuickControlsOverlay({
                 </ThemedText>
               </TVFocusable>
             );
-          })}
-        </ScrollView>
+          }}
+        />
+        <TVFocusable style={{ padding: 12, alignSelf: 'flex-end' }} onPress={onClose}><ThemedText style={styles.pillValue}>Kapat</ThemedText></TVFocusable>
       </View>
+      </TVModalSurface>
     );
   }
 

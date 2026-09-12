@@ -12,6 +12,7 @@ import { ThemedText } from '@/components/themed-text';
 import { useTheme } from '@/hooks/use-theme';
 import { useUiStore } from '@/store/uiStore';
 import { useSearchEngine } from './search/useSearchEngine';
+import { TVSearchView } from './search/TVSearchView';
 import { SearchHeader } from './search/SearchHeader';
 import { SearchFilterBar } from './search/SearchFilterBar';
 import { SearchResultGrid, SearchHistoryAndTrending } from './search/SearchResultGrid';
@@ -34,6 +35,7 @@ export function SearchView({ profileId }: SearchViewProps) {
   const flatListRef = useRef<FlatList | null>(null);
   const inputRef = useRef<TextInput | null>(null);
 
+  const engine = useSearchEngine(profileId);
   const {
     query,
     setQuery,
@@ -74,7 +76,7 @@ export function SearchView({ profileId }: SearchViewProps) {
     addToHistory,
     clearHistory,
     isSearchActive,
-  } = useSearchEngine(profileId);
+  } = engine;
 
   const onSelectSuggestion = useCallback(
     (item: any) => {
@@ -100,6 +102,8 @@ export function SearchView({ profileId }: SearchViewProps) {
     },
     [setQuery, addToHistory]
   );
+
+  if (Platform.isTV) return <TVSearchView engine={engine} onSelectDetail={setActiveDetail} onSelectActor={setActiveActor} />;
 
   // Widescreen Layout (TV & Desktop Web)
   if (Platform.isTV || isDesktopWeb) {

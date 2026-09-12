@@ -255,6 +255,7 @@ export function TrailerModal({
             contentFit="cover"
             nativeControls={false}
             allowsFullscreen={false}
+            playsInline={true}
           />
         ) : (
           <View style={styles.loading}>

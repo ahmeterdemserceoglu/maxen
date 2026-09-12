@@ -1,3 +1,4 @@
+import { TVTouchable } from '@/components/TVTouchable';
 import React from 'react';
 import {
   View,
@@ -145,12 +146,12 @@ export const ReelItemCard: React.FC<ReelItemCardProps> = ({
           />
           {/* YouTube Fullscreen Close Button */}
           {isFullscreen && isCurrent && (
-            <TouchableOpacity
+            <TVTouchable
               style={styles.fullscreenCloseBtn}
               onPress={onExitFullscreen}
             >
               <Ionicons name="close" size={24} color="#fff" />
-            </TouchableOpacity>
+            </TVTouchable>
           )}
         </View>
       ) : null}
@@ -175,13 +176,13 @@ export const ReelItemCard: React.FC<ReelItemCardProps> = ({
           {/* TOP BAR */}
           <View style={[styles.topBar, isTV && styles.topBarTV]}>
             {onClose && (
-              <TouchableOpacity
+              <TVTouchable
                 onPress={onClose}
                 activeOpacity={0.8}
                 style={[styles.closeButton, isTV && styles.closeButtonTV]}
               >
                 <Ionicons name="chevron-back" size={isTV ? 29 : 23} color="#fff" />
-              </TouchableOpacity>
+              </TVTouchable>
             )}
 
             <View style={styles.feedBrand}>
@@ -332,7 +333,7 @@ export const ReelItemCard: React.FC<ReelItemCardProps> = ({
             )}
 
             {/* NEXT INDICATOR */}
-            <View style={styles.nextHint}>
+            <View style={[styles.nextHint, isTV && { display: 'none' }]}>
               <View style={styles.nextArrow}>
                 <Ionicons name="chevron-down" size={13} color="#fff" />
               </View>

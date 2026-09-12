@@ -1,3 +1,4 @@
+import { TVTouchable } from '@/components/TVTouchable';
 import React, { useEffect, useState, useMemo } from 'react';
 import {
   View,
@@ -9,6 +10,7 @@ import {
   StatusBar,
   useWindowDimensions,
   Alert,
+  BackHandler,
   TouchableOpacity,
 } from 'react-native';
 import { Image } from 'expo-image';
@@ -17,7 +19,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { TMDB_BASE_URL, TMDB_IMAGE_BASE_URL } from '@/config/tmdb';
 import { TVFocusable } from '@/components/TVFocusable';
-import { TrailerModal } from '@/components/TrailerModal';
+import { TrailerModal } from './detail/TrailerModal';
 
 export interface ComingSoonItem {
   id: number;
@@ -51,6 +53,12 @@ export function ComingSoonView({ onClose, onSelectMedia }: ComingSoonViewProps) 
   const [trailerKey, setTrailerKey] = useState<string | null>(null);
   const [trailerTitle, setTrailerTitle] = useState<string>('');
   const [loadingTrailerId, setLoadingTrailerId] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!onClose || trailerVisible) return;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => { onClose(); return true; });
+    return () => sub.remove();
+  }, [onClose, trailerVisible]);
 
   const handleWatchTrailer = async (movie: ComingSoonItem) => {
     try {
@@ -162,10 +170,10 @@ export function ComingSoonView({ onClose, onSelectMedia }: ComingSoonViewProps) 
     const imageUri = imagePath ? `${TMDB_IMAGE_BASE_URL}/w300${imagePath}` : null;
 
     return (
-      <View style={styles.cardContainer}>
+      <View style={[styles.cardContainer, isTV && { width: (width - 96) / 2, marginHorizontal: 12 }]}>
         <View style={styles.card}>
           {/* Tıklanabilir Afiş ve Bilgi Alanı */}
-          <TouchableOpacity
+          <TVTouchable
             activeOpacity={0.88}
             onPress={() => onSelectMedia?.({ ...item, type: 'movie' })}
             style={{ width: '100%' }}
@@ -177,7 +185,7 @@ export function ComingSoonView({ onClose, onSelectMedia }: ComingSoonViewProps) 
                   source={{ uri: imageUri }}
                   style={styles.posterImage}
                   contentFit="cover"
-                  transition={200}
+                  transition={isTV ? 0 : 200}
                   cachePolicy="memory-disk"
                 />
               ) : (
@@ -222,7 +230,7 @@ export function ComingSoonView({ onClose, onSelectMedia }: ComingSoonViewProps) 
                 {item.overview || 'Bu yapım hakkında konu ve özet bilgisi yakında eklenecektir.'}
               </Text>
             </View>
-          </TouchableOpacity>
+          </TVTouchable>
 
           {/* Butonlar */}
           <View style={{ paddingHorizontal: 16, paddingBottom: 16 }}>
@@ -345,11 +353,13 @@ export function ComingSoonView({ onClose, onSelectMedia }: ComingSoonViewProps) 
       ) : (
         <FlatList
           data={filteredItems}
+          numColumns={isTV ? 2 : 1}
+          key={isTV ? 'tv-grid' : 'mobile-list'}
           keyExtractor={(item) => String(item.id)}
           renderItem={renderCard}
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
-          removeClippedSubviews={Platform.OS === 'android'}
+          removeClippedSubviews={!isTV && Platform.OS === 'android'}
           initialNumToRender={isTV ? 4 : 5}
           maxToRenderPerBatch={isTV ? 2 : 4}
           windowSize={isTV ? 3 : 5}
@@ -359,7 +369,7 @@ export function ComingSoonView({ onClose, onSelectMedia }: ComingSoonViewProps) 
       {/* Fragman Oynatıcı Modalı */}
       <TrailerModal
         visible={trailerVisible}
-        videoKey={trailerKey}
+        youtubeKey={trailerKey}
         title={trailerTitle}
         onClose={() => {
           setTrailerVisible(false);
@@ -452,7 +462,7 @@ const styles = StyleSheet.create({
   },
   filterChipText: {
     color: '#8E8E93',
-    fontSize: 12,
+    fontSize: Platform.isTV ? 15 : 12,
     fontWeight: '600',
   },
   filterChipTextActive: {
@@ -467,7 +477,7 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     color: '#888',
-    fontSize: 13,
+    fontSize: Platform.isTV ? 16 : 13,
     fontWeight: '600',
   },
   emptyContainer: {
@@ -631,7 +641,7 @@ const styles = StyleSheet.create({
   },
   trailerBtnText: {
     color: '#FFFFFF',
-    fontSize: 13,
+    fontSize: Platform.isTV ? 16 : 13,
     fontWeight: '800',
   },
   remindBtn: {
@@ -655,7 +665,7 @@ const styles = StyleSheet.create({
   },
   remindBtnText: {
     color: '#B0B0B8',
-    fontSize: 13,
+    fontSize: Platform.isTV ? 16 : 13,
     fontWeight: '700',
   },
   remindBtnTextActive: {

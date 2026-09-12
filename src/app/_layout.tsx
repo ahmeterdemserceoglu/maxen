@@ -74,6 +74,7 @@ function VideoSplashScreen({ onFinish }: { onFinish: () => void }) {
         player={player}
         nativeControls={false}
         contentFit="cover"
+        playsInline={true}
       />
     </Animated.View>
   );

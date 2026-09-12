@@ -1,3 +1,4 @@
+import { TVTextInput, TVSwitch } from '@/components/TVFormControls';
 import React from 'react';
 import {
   View,
@@ -159,7 +160,7 @@ export function ForgotPasswordModal({
                       color="#A5B6C8"
                     />
 
-                    <TextInput
+                    <TVTextInput
                       style={styles.premiumInputText}
                       placeholder="E-posta adresiniz"
                       placeholderTextColor="#647080"

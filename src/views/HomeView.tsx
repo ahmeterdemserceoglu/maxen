@@ -8,7 +8,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useHomeData, NormalizedMediaItem } from './home/useHomeData';
 import { HeroBanner } from './home/HeroBanner';
 import { TVHeroCanvas } from './home/TVHeroCanvas';
-import { MediaRow, SkeletonHome, SectionData } from './home/MediaRow';
+import { MediaRow, SkeletonHome, SectionData, TV_ROW_HEIGHT } from './home/MediaRow';
 import { extractCleanTmdbId } from '@/types/profileMedia';
 
 const isTV = Platform.isTV;
@@ -57,16 +57,13 @@ export function HomeView({ activeTab, profileId }: HomeViewProps) {
     }
   }, [heroMedia, activeTvItem]);
 
-  useEffect(() => {
-    if (!loading && heroMedia && heroPlayBtnRef.current) {
-      heroPlayBtnRef.current?.focus?.();
-    }
-  }, [loading, heroMedia]);
+  // Initial focus is owned by the hero's preferred-focus prop. Do not steal it
+  // from the sidebar/cards when catalog data refreshes.
 
   const focusDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleFocusMediaItem = useCallback((item: any) => {
-    if (!item) return;
+    if (!isTV || !item) return;
     if (focusDebounceRef.current) {
       clearTimeout(focusDebounceRef.current);
     }
@@ -349,8 +346,8 @@ export function HomeView({ activeTab, profileId }: HomeViewProps) {
 
   const getTVItemLayout = useCallback(
     (_: any, index: number) => ({
-      length: 236,
-      offset: 236 * index,
+      length: TV_ROW_HEIGHT,
+      offset: TV_ROW_HEIGHT * index,
       index,
     }),
     []
@@ -391,14 +388,14 @@ export function HomeView({ activeTab, profileId }: HomeViewProps) {
           keyboardShouldPersistTaps="handled"
           initialNumToRender={3}
           maxToRenderPerBatch={2}
-          windowSize={4}
+          windowSize={3}
           removeClippedSubviews={false}
           decelerationRate={0.985}
           overScrollMode="never"
           getItemLayout={getTVItemLayout}
           onScrollToIndexFailed={(info) => {
             mainVerticalListRef.current?.scrollToOffset({
-              offset: 236 * info.index,
+              offset: TV_ROW_HEIGHT * info.index,
               animated: true,
             });
           }}

@@ -4,6 +4,7 @@ import {
   StyleSheet,
   TextInput,
   Animated,
+  Platform,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
@@ -33,10 +34,11 @@ export function PinVerifyModal({
 }: PinVerifyModalProps) {
   return (
     <View style={[styles.rootBackground, styles.centerAll]}>
-      <View style={styles.profileGlassCard}>
+      <View style={[styles.profileGlassCard, Platform.isTV && { padding: 16 }]}>
         <Animated.View
           style={[
             styles.avatarLarge,
+            Platform.isTV && { width: 56, height: 56, marginBottom: 6 },
             {
               backgroundColor: targetProfile.color,
             },
@@ -79,7 +81,16 @@ export function PinVerifyModal({
           Bu profille devam etmek için 4 haneli PIN kodunu girin.
         </ThemedText>
 
-        <TextInput
+        {Platform.isTV ? <View style={{ width: 280, gap: 12 }}>
+          <ThemedText style={{ color: '#fff', fontSize: 26, textAlign: 'center', letterSpacing: 10 }}>{'●'.repeat(enteredPin.length).padEnd(4, '○')}</ThemedText>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+            {['1','2','3','4','5','6','7','8','9','Sil','0'].map((digit, index) => <TVFocusable key={digit} hasTVPreferredFocus={index === 0} style={{ width: 84, height: 42, alignItems: 'center', justifyContent: 'center', backgroundColor: '#262626' }} onPress={() => {
+              const value = digit === 'Sil' ? enteredPin.slice(0, -1) : (enteredPin + digit).slice(0, 4);
+              onChangeEnteredPin(value);
+              if (digit !== 'Sil' && value.length === 4) onVerifyPin(value);
+            }}><ThemedText style={{ color: '#fff', fontSize: 18 }}>{digit}</ThemedText></TVFocusable>)}
+          </View>
+        </View> : <TextInput
           style={styles.pinInput}
           placeholder="••••"
           placeholderTextColor="#555"
@@ -96,7 +107,7 @@ export function PinVerifyModal({
           maxLength={4}
           secureTextEntry
           autoFocus
-        />
+        />}
 
         {errorMessage && (
           <ThemedText style={styles.errorText}>

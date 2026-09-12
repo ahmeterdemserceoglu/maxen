@@ -6,16 +6,21 @@ import {
   Animated,
   useWindowDimensions,
   FlatList,
-  findNodeHandle,
 } from 'react-native';
+import { getTVNodeHandle } from '@/utils/tvNodeHandle';
 import { FlashList } from '@shopify/flash-list';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { ThemedText } from '@/components/themed-text';
 import { TVFocusable } from '@/components/TVFocusable';
+import { TVFocusGroup } from '@/components/TVFocusGroup';
 import { TMDB_BASE_URL } from '@/config/tmdb';
 import { useUiStore } from '@/store/uiStore';
 
+import { getWatchProgress } from '@/utils/watchProgress';
+import { mediaDocId } from '@/types/profileMedia';
+
+export const TV_ROW_HEIGHT = 236;
 const isTV = Platform.isTV;
 
 export interface SectionData {
@@ -38,6 +43,10 @@ export const SkeletonCard = () => {
   const animatedValue = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
+    if (isTV) {
+      animatedValue.setValue(0.5);
+      return;
+    }
     const animation = Animated.loop(
       Animated.sequence([
         Animated.timing(animatedValue, {
@@ -135,18 +144,22 @@ export const MediaCard = React.memo<MediaCardProps>(
     const isDesktopWeb = Platform.OS === 'web' && width > 768;
 
     const heroPlayBtnNodeId = useUiStore((state) => state.heroPlayBtnNodeId);
+    const sidebarActiveNodeId = useUiStore((state) => state.sidebarActiveNodeId);
     const setFirstRowFirstCardNodeId = useUiStore((state) => state.setFirstRowFirstCardNodeId);
     const cardRef = useRef<any>(null);
 
     // Register first card of first row for Hero Play Button deterministic D-pad Down navigation
     useEffect(() => {
       if (isTV && rowIndex === 0 && cardIndex === 0 && cardRef.current) {
-        try {
-          const id = findNodeHandle(cardRef.current);
-          if (id) {
-            setFirstRowFirstCardNodeId(id);
-          }
-        } catch (e) {}
+        const id = getTVNodeHandle(cardRef.current);
+        if (id) {
+          setFirstRowFirstCardNodeId(id);
+          return () => {
+            if (useUiStore.getState().firstRowFirstCardNodeId === id) {
+              setFirstRowFirstCardNodeId(null);
+            }
+          };
+        }
       }
     }, [rowIndex, cardIndex, setFirstRowFirstCardNodeId]);
 
@@ -202,7 +215,8 @@ export const MediaCard = React.memo<MediaCardProps>(
           onFocus={() => {
             onFocus?.(rowIndex, cardIndex, item);
           }}
-          hasTVPreferredFocus={isPreferredFocus}
+          hasTVPreferredFocus={false}
+          nextFocusLeft={cardIndex === 0 ? (sidebarActiveNodeId || undefined) : undefined}
           nextFocusUp={rowIndex === 0 ? (heroPlayBtnNodeId || undefined) : undefined}
           style={[
             styles.cardFocusable,
@@ -222,7 +236,7 @@ export const MediaCard = React.memo<MediaCardProps>(
                   borderColor: '#E50914',
                   borderWidth: 2.5,
                   transform: [{ scale: 1.06 }],
-                  elevation: 8,
+                  elevation: 0,
                   zIndex: 20,
                 }
               : {
@@ -243,7 +257,7 @@ export const MediaCard = React.memo<MediaCardProps>(
                   source={{ uri: posterUri }}
                   style={styles.cardImage}
                   contentFit="cover"
-                  transition={100}
+                  transition={isTV ? 0 : 100}
                   cachePolicy="memory-disk"
                   recyclingKey={String(item.id || item.tmdbId)}
                 />
@@ -281,7 +295,7 @@ export const MediaCard = React.memo<MediaCardProps>(
         >
           {item.title || item.name}
         </ThemedText>
-        {subtitle ? <ThemedText style={styles.cardSubtitle}>{subtitle}</ThemedText> : null}
+        {subtitle ? <ThemedText numberOfLines={1} style={styles.cardSubtitle}>{subtitle}</ThemedText> : null}
       </View>
     );
   },
@@ -289,7 +303,9 @@ export const MediaCard = React.memo<MediaCardProps>(
     prevProps.item === nextProps.item &&
     prevProps.rowIndex === nextProps.rowIndex &&
     prevProps.cardIndex === nextProps.cardIndex &&
-    prevProps.isPreferredFocus === nextProps.isPreferredFocus
+    prevProps.isPreferredFocus === nextProps.isPreferredFocus &&
+    prevProps.onPress === nextProps.onPress &&
+    prevProps.onFocus === nextProps.onFocus
 );
 
 // ──── CONTINUE WATCHING CARD ────
@@ -306,6 +322,22 @@ export const ContinueWatchingCard = React.memo<ContinueWatchingCardProps>(
   ({ item, rowIndex, cardIndex = 0, isPreferredFocus = false, onPress, onFocus }) => {
     const { width } = useWindowDimensions();
     const isDesktopWeb = Platform.OS === 'web' && width > 768;
+    const heroPlayBtnNodeId = useUiStore((state) => state.heroPlayBtnNodeId);
+    const sidebarActiveNodeId = useUiStore((state) => state.sidebarActiveNodeId);
+    const setFirstRowFirstCardNodeId = useUiStore((state) => state.setFirstRowFirstCardNodeId);
+    const cardRef = useRef<any>(null);
+    useEffect(() => {
+      if (!isTV || rowIndex !== 0 || cardIndex !== 0 || !cardRef.current) return;
+      const nodeId = getTVNodeHandle(cardRef.current);
+      if (nodeId) {
+        setFirstRowFirstCardNodeId(nodeId);
+        return () => {
+          if (useUiStore.getState().firstRowFirstCardNodeId === nodeId) {
+            setFirstRowFirstCardNodeId(null);
+          }
+        };
+      }
+    }, [rowIndex, cardIndex, setFirstRowFirstCardNodeId]);
 
     const rawBackdrop =
       item.backdropUrl ||
@@ -316,12 +348,7 @@ export const ContinueWatchingCard = React.memo<ContinueWatchingCardProps>(
 
     const backdropUri = getOptimizedImageUrl(rawBackdrop, true);
 
-    const progress =
-      typeof item.progress === 'number'
-        ? item.progress
-        : item.positionSeconds && item.durationSeconds
-        ? (item.positionSeconds / item.durationSeconds) * 100
-        : 0;
+    const progress = getWatchProgress(item) * 100;
 
     const cardW = isDesktopWeb ? 260 : isTV ? 228 : 180;
     const cardH = isDesktopWeb ? 150 : isTV ? 128 : 105;
@@ -339,7 +366,10 @@ export const ContinueWatchingCard = React.memo<ContinueWatchingCardProps>(
         <TVFocusable
           onPress={() => onPress(item)}
           onFocus={() => onFocus?.(rowIndex, cardIndex, item)}
-          hasTVPreferredFocus={isPreferredFocus}
+          ref={cardRef}
+          nextFocusUp={rowIndex === 0 ? (heroPlayBtnNodeId || undefined) : undefined}
+          nextFocusLeft={cardIndex === 0 ? (sidebarActiveNodeId || undefined) : undefined}
+          hasTVPreferredFocus={false}
           style={[
             styles.cwFocusable,
             {
@@ -358,7 +388,7 @@ export const ContinueWatchingCard = React.memo<ContinueWatchingCardProps>(
                   borderColor: '#E50914',
                   borderWidth: 2.5,
                   transform: [{ scale: 1.05 }],
-                  elevation: 8,
+                  elevation: 0,
                   zIndex: 20,
                 }
               : {
@@ -377,7 +407,7 @@ export const ContinueWatchingCard = React.memo<ContinueWatchingCardProps>(
                 source={{ uri: backdropUri }}
                 style={styles.cwImage}
                 contentFit="cover"
-                transition={100}
+                transition={isTV ? 0 : 100}
                 cachePolicy="memory-disk"
                 recyclingKey={String(item.id || item.tmdbId)}
               />
@@ -414,7 +444,7 @@ export const ContinueWatchingCard = React.memo<ContinueWatchingCardProps>(
         </ThemedText>
 
         {(item.season_number || item.seasonNumber) && (item.episode_number || item.episodeNumber) ? (
-          <ThemedText style={styles.cwEpisodeSubtitle}>
+          <ThemedText numberOfLines={1} style={styles.cwEpisodeSubtitle}>
             S{item.season_number || item.seasonNumber} B{item.episode_number || item.episodeNumber} {item.title && item.title !== item.show_title ? `• ${item.title}` : ''}
           </ThemedText>
         ) : null}
@@ -425,7 +455,9 @@ export const ContinueWatchingCard = React.memo<ContinueWatchingCardProps>(
     prevProps.item === nextProps.item &&
     prevProps.rowIndex === nextProps.rowIndex &&
     prevProps.cardIndex === nextProps.cardIndex &&
-    prevProps.isPreferredFocus === nextProps.isPreferredFocus
+    prevProps.isPreferredFocus === nextProps.isPreferredFocus &&
+    prevProps.onPress === nextProps.onPress &&
+    prevProps.onFocus === nextProps.onFocus
 );
 
 // ──── MEDIA ROW ────
@@ -457,7 +489,10 @@ export const MediaRow = React.memo<MediaRowProps>(
     };
 
     const handleCardFocus = useCallback(
-      (rIdx: number, _cIdx: number, mediaItem: any) => {
+      (rIdx: number, cIdx: number, mediaItem: any) => {
+        if (isTV) {
+          listRef.current?.scrollToIndex({ index: cIdx, viewPosition: 0.25, animated: false });
+        }
         onFocusMediaItem?.(mediaItem);
         onFocusRow?.(rIdx);
       },
@@ -495,7 +530,7 @@ export const MediaRow = React.memo<MediaRowProps>(
     );
 
     const keyExtractor = useCallback(
-      (item: any) => String(item.id || item.tmdbId),
+      (item: any) => mediaDocId(item),
       []
     );
 
@@ -507,16 +542,17 @@ export const MediaRow = React.memo<MediaRowProps>(
     const getHorizontalItemLayout = useCallback(
       (_: any, index: number) => ({
         length: 240,
-        offset: 240 * index,
+        offset: 20 + 240 * index,
         index,
       }),
       []
     );
 
     return (
-      <View
+      <TVFocusGroup
         style={[
           styles.rowContainer,
+          isTV && { height: TV_ROW_HEIGHT - 8 },
           isDesktopWeb && {
             marginTop: rowIndex === 0 ? -40 : 28,
             marginBottom: 8,
@@ -595,10 +631,13 @@ export const MediaRow = React.memo<MediaRowProps>(
               showsHorizontalScrollIndicator={false}
               removeClippedSubviews={false}
               contentContainerStyle={styles.listContent}
-              initialNumToRender={6}
+              initialNumToRender={Math.ceil(width / 240) + 1}
               maxToRenderPerBatch={4}
-              windowSize={5}
+              windowSize={3}
               getItemLayout={getHorizontalItemLayout}
+              onScrollToIndexFailed={({ index }) => {
+                listRef.current?.scrollToOffset({ offset: 240 * index, animated: false });
+              }}
             />
           ) : (
             <FlashList
@@ -661,7 +700,7 @@ export const MediaRow = React.memo<MediaRowProps>(
             </button>
           )}
         </View>
-      </View>
+      </TVFocusGroup>
     );
   },
   (prevProps, nextProps) =>

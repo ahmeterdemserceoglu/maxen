@@ -1,3 +1,4 @@
+import { TVTextInput, TVSwitch } from '@/components/TVFormControls';
 import React, { useState } from 'react';
 import {
   View,
@@ -62,7 +63,7 @@ export function ProfileListScreen({
         <ThemedText style={styles.cardTitle}>Profilleri Yönet</ThemedText>
 
         <View style={styles.gridContainer}>
-          {profiles.map((profile) => (
+          {profiles.map((profile, index) => (
             <View
               key={profile.id}
               style={styles.profileWrapper}
@@ -154,7 +155,7 @@ export function ProfileListScreen({
                 />
               </View>
 
-              <TextInput
+              <TVTextInput
                 style={styles.addInput}
                 placeholder="Profil adı"
                 placeholderTextColor="#666"
@@ -167,7 +168,7 @@ export function ProfileListScreen({
                   Çocuk?
                 </ThemedText>
 
-                <Switch
+                <TVSwitch
                   value={newIsKids}
                   onValueChange={onChangeNewIsKids}
                   trackColor={{
@@ -178,7 +179,7 @@ export function ProfileListScreen({
                 />
               </View>
 
-              <TextInput
+              <TVTextInput
                 style={styles.pinInputMini}
                 placeholder="PIN"
                 placeholderTextColor="#666"
@@ -244,12 +245,13 @@ export function ProfileListScreen({
         />
       ) : (
         <View style={styles.gridContainer}>
-          {profiles.map((profile) => (
+          {profiles.map((profile, index) => (
             <View
               key={profile.id}
               style={styles.profileWrapper}
             >
               <TVFocusable
+                hasTVPreferredFocus={Platform.isTV && index === 0}
                 onPress={() => onSelectProfile(profile)}
                 style={styles.focusable}
                 focusedStyle={{

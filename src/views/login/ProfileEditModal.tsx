@@ -1,3 +1,5 @@
+import { TVTextInput, TVSwitch } from '@/components/TVFormControls';
+import { TVTouchable } from '@/components/TVTouchable';
 import React from 'react';
 import {
   View,
@@ -101,7 +103,7 @@ export function ProfileEditModal({
               style={styles.inputIcon}
             />
 
-            <TextInput
+            <TVTextInput
               style={styles.inputWithIcon}
               placeholder="Profil adı"
               placeholderTextColor="#666"
@@ -120,7 +122,7 @@ export function ProfileEditModal({
             showsHorizontalScrollIndicator={false}
             style={styles.avatarRow}
           >
-            <TouchableOpacity
+            <TVTouchable
               onPress={() => onChangeEditAvatarUrl(null)}
               style={[
                 styles.avatarPresetItem,
@@ -139,10 +141,10 @@ export function ProfileEditModal({
               >
                 {profileLetter(editName || editingProfile.name)}
               </ThemedText>
-            </TouchableOpacity>
+            </TVTouchable>
 
             {AVATAR_PRESETS.map((preset) => (
-              <TouchableOpacity
+              <TVTouchable
                 key={preset.id}
                 onPress={() => onChangeEditAvatarUrl(preset.url)}
                 style={[
@@ -157,7 +159,7 @@ export function ProfileEditModal({
                   }}
                   style={styles.presetImage}
                 />
-              </TouchableOpacity>
+              </TVTouchable>
             ))}
           </ScrollView>
 
@@ -207,7 +209,7 @@ export function ProfileEditModal({
               </View>
             </View>
 
-            <Switch
+            <TVSwitch
               value={editIsKids}
               onValueChange={onChangeEditIsKids}
               trackColor={{
@@ -228,7 +230,7 @@ export function ProfileEditModal({
               style={styles.inputIcon}
             />
 
-            <TextInput
+            <TVTextInput
               style={styles.inputWithIcon}
               placeholder="4 haneli PIN"
               placeholderTextColor="#666"

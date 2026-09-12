@@ -2,14 +2,14 @@
   "expo": {
     "name": "maxen",
     "slug": "maxen",
-    "version": "10.6.2",
+    "version": "10.6.5",
     "orientation": "default",
     "scheme": "maxen",
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.maxen.app",
-      "buildNumber": "19",
+      "buildNumber": "21",
       "infoPlist": {
         "UIBackgroundModes": [
           "audio"
@@ -32,7 +32,7 @@
     },
     "android": {
       "package": "com.maxen.app",
-      "versionCode": 19,
+      "versionCode": 23,
       "isTV": true,
       "usesCleartextTraffic": true,
       "predictiveBackGestureEnabled": false,

@@ -1,3 +1,4 @@
+import { TVFocusable } from '@/components/TVFocusable';
 import React, { useEffect, useRef } from 'react';
 import {
   View,
@@ -6,6 +7,8 @@ import {
   FlatList,
   useWindowDimensions,
   StatusBar,
+  Platform,
+  BackHandler,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -44,6 +47,7 @@ export function ReelsFeedView({
     items,
     loading,
     activeIndex,
+    setActiveIndex,
     favorites,
     isMuted,
     setIsMuted,
@@ -62,7 +66,7 @@ export function ReelsFeedView({
 
   // Restore scroll position when dimensions change or when exiting fullscreen
   useEffect(() => {
-    if (!isFullscreen && flatListRef.current && items.length > 0) {
+    if (!Platform.isTV && !isFullscreen && flatListRef.current && items.length > 0) {
       const timeoutId = setTimeout(() => {
         flatListRef.current?.scrollToIndex({
           index: activeIndex,
@@ -72,6 +76,12 @@ export function ReelsFeedView({
       return () => clearTimeout(timeoutId);
     }
   }, [width, height, isFullscreen, activeIndex, items.length]);
+
+  useEffect(() => {
+    if (!Platform.isTV || !onClose) return;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => { onClose(); return true; });
+    return () => sub.remove();
+  }, [onClose]);
 
   if (loading) {
     return (
@@ -97,6 +107,19 @@ export function ReelsFeedView({
         <Text style={styles.loadingText}>Keşif akışı hazırlanıyor...</Text>
       </View>
     );
+  }
+
+  if (Platform.isTV) {
+    const item = items[activeIndex];
+    return <View style={styles.root}>
+      {item && <ReelItemCard key={item.id} item={item} index={activeIndex} activeIndex={activeIndex} totalCount={items.length} isFav={favorites.includes(item.id)} isMuted={isMuted} isFullscreen={false} failedVideoKeys={failedVideoKeys} onToggleFav={handleToggleFav} onToggleMute={() => setIsMuted(prev => !prev)} onSelectMedia={onSelectMedia} onPlayMedia={onPlayMedia} onClose={onClose} onEnterFullscreen={() => {}} onExitFullscreen={() => {}} onVideoFail={handleFailVideo} />}
+      <View style={{ position: 'absolute', bottom: 24, right: 40, flexDirection: 'row', gap: 12 }}>
+        <TVFocusable disabled={activeIndex === 0} style={tvButton} onPress={() => { setActiveIndex(activeIndex - 1); onActiveIndexChange?.(activeIndex - 1); }}><Text style={tvText}>Önceki</Text></TVFocusable>
+        <TVFocusable hasTVPreferredFocus disabled={!item} style={tvButton} onPress={() => item && onSelectMedia(item)}><Text style={tvText}>Detaylar</Text></TVFocusable>
+        <TVFocusable disabled={activeIndex >= items.length - 1} style={tvButton} onPress={() => { setActiveIndex(activeIndex + 1); onActiveIndexChange?.(activeIndex + 1); }}><Text style={tvText}>Sonraki</Text></TVFocusable>
+        {!item && onClose && <TVFocusable style={tvButton} onPress={onClose}><Text style={tvText}>Geri</Text></TVFocusable>}
+      </View>
+    </View>;
   }
 
   return (
@@ -202,3 +225,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 });
+
+const tvButton = { minHeight: 48, paddingHorizontal: 18, justifyContent: 'center' as const, backgroundColor: '#262626' };
+const tvText = { color: '#fff', fontSize: 17 };

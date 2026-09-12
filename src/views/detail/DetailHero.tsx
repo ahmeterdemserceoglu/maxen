@@ -1,9 +1,9 @@
+import { TVDetailHero } from './TVDetailHero';
 import React from 'react';
 import {
   View,
   StyleSheet,
   TouchableOpacity,
-  findNodeHandle,
   Platform,
   ActivityIndicator,
 } from 'react-native';
@@ -33,6 +33,8 @@ export interface DetailHeroProps {
   ratingButtonRef?: any;
   closeButtonRef?: any;
   actorRefs?: any;
+  firstEpisodeRef?: any;
+  firstContentNodeId?: number;
   onPlay: () => void;
   onToggleFavorite: () => void;
   onToggleWatchLater?: () => void;
@@ -66,6 +68,8 @@ export function DetailHero({
   ratingButtonRef,
   closeButtonRef,
   actorRefs,
+  firstEpisodeRef,
+  firstContentNodeId,
   onPlay,
   onToggleFavorite,
   onToggleWatchLater,
@@ -79,445 +83,40 @@ export function DetailHero({
 }: DetailHeroProps) {
   const theme = useTheme();
 
-  /*
-   * ============================================================
-   * TV MOVIE HERO
-   * ============================================================
-   */
-  if (isTV && isMovie) {
-    return (
-      <View style={styles.tvMovieInfo}>
-        <ThemedText style={[styles.tvCategory, { fontSize: 16, marginBottom: 8 }]}>FİLM</ThemedText>
-
-        <ThemedText style={[styles.tvMovieTitle, { fontSize: 48, lineHeight: 56, fontWeight: 'bold' }]} numberOfLines={2}>
-          {media.title}
-        </ThemedText>
-
-        <View style={[styles.tvMeta, { gap: 16, marginVertical: 16, alignItems: 'center' }]}>
-          {media.rating && (
-            <View style={[styles.tvRatingBadge, { paddingHorizontal: 12, paddingVertical: 6, gap: 6 }]}>
-              <Ionicons name="star" size={28} color="#F5C518" />
-              <ThemedText style={[styles.tvRatingText, { fontSize: 20 }]}>{media.rating}</ThemedText>
-            </View>
-          )}
-
-          {media.year && (
-            <ThemedText style={[styles.tvMetaText, { fontSize: 20 }]}>{media.year}</ThemedText>
-          )}
-
-          {movieRuntime ? (
-            <>
-              <ThemedText style={[styles.tvMetaDot, { fontSize: 20 }]}>•</ThemedText>
-              <ThemedText style={[styles.tvMetaText, { fontSize: 20 }]}>{movieRuntime}</ThemedText>
-            </>
-          ) : null}
-        </View>
-
-        {/* GENRES */}
-        {genreList.length > 0 && (
-          <View style={[styles.tvGenreRow, { gap: 12, marginBottom: 24 }]}>
-            {genreList.map((genre, index) => (
-              <View key={`${genre}-${index}`} style={[styles.tvGenrePill, { paddingHorizontal: 16, paddingVertical: 8 }]}>
-                <ThemedText style={[styles.tvGenreText, { fontSize: 16 }]}>{genre}</ThemedText>
-              </View>
-            ))}
-          </View>
-        )}
-
-        {/* ACTIONS */}
-        <View style={[styles.tvActionRow, { gap: 16 }]}>
-          <TVFocusable
-            ref={playButtonRef}
-            onPress={onPlay}
-            style={[styles.tvPlayButton, { height: 62, paddingHorizontal: 32, gap: 12 }]}
-            focusedStyle={styles.tvPlayButtonFocused}
-            nextFocusUp={
-              closeButtonRef?.current
-                ? findNodeHandle(closeButtonRef.current) || undefined
-                : undefined
-            }
-            nextFocusDown={
-              actorRefs?.current?.[0]
-                ? findNodeHandle(actorRefs.current[0]) || undefined
-                : undefined
-            }
-            nextFocusRight={
-              trailerButtonRef?.current
-                ? findNodeHandle(trailerButtonRef.current) || undefined
-                : favoriteButtonRef?.current
-                ? findNodeHandle(favoriteButtonRef.current) || undefined
-                : undefined
-            }
-          >
-            {({ focused }) => (
-              <>
-                <Ionicons
-                  name="play"
-                  size={28}
-                  color={focused ? '#fff' : '#000'}
-                />
-                <ThemedText
-                  style={[
-                    styles.tvPlayText,
-                    { color: focused ? '#fff' : '#000', fontSize: 18, fontWeight: 'bold' },
-                  ]}
-                >
-                  {movieProgress > 0 && movieProgress < 0.95
-                    ? 'Devam Et'
-                    : 'Oynat'}
-                </ThemedText>
-              </>
-            )}
-          </TVFocusable>
-
-          {trailerKey && (
-            <TVFocusable
-              ref={trailerButtonRef}
-              onPress={onOpenTrailer}
-              style={[styles.tvTrailerButton, { height: 62, paddingHorizontal: 32, gap: 12 }]}
-              focusedStyle={styles.tvTrailerButtonFocused}
-              nextFocusLeft={
-                findNodeHandle(playButtonRef.current) || undefined
-              }
-              nextFocusRight={
-                favoriteButtonRef?.current
-                  ? findNodeHandle(favoriteButtonRef.current) || undefined
-                  : undefined
-              }
-            >
-              <Ionicons name="film-outline" size={26} color="#fff" />
-              <ThemedText style={[styles.tvTrailerText, { fontSize: 18, fontWeight: 'bold' }]}>Fragman</ThemedText>
-            </TVFocusable>
-          )}
-
-          <TVFocusable
-            ref={favoriteButtonRef}
-            onPress={onToggleFavorite}
-            style={[
-              styles.tvFavoriteButton,
-              isFav && styles.tvFavoriteActive,
-              { width: 56, height: 56, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 0 }
-            ]}
-            focusedStyle={styles.tvFavoriteFocused}
-            nextFocusLeft={
-              trailerButtonRef?.current
-                ? findNodeHandle(trailerButtonRef.current) || undefined
-                : findNodeHandle(playButtonRef.current) || undefined
-            }
-            nextFocusRight={
-              watchLaterButtonRef?.current
-                ? findNodeHandle(watchLaterButtonRef.current) || undefined
-                : ratingButtonRef?.current
-                ? findNodeHandle(ratingButtonRef.current) || undefined
-                : undefined
-            }
-            nextFocusDown={
-              actorRefs?.current?.[0]
-                ? findNodeHandle(actorRefs.current[0]) || undefined
-                : undefined
-            }
-          >
-            <Ionicons
-              name={isFav ? 'heart' : 'heart-outline'}
-              size={28}
-              color="#fff"
-            />
-          </TVFocusable>
-
-          {onToggleWatchLater && (
-            <TVFocusable
-              ref={watchLaterButtonRef}
-              onPress={onToggleWatchLater}
-              style={[
-                styles.tvFavoriteButton,
-                isWatchLater && styles.tvFavoriteActive,
-                { width: 56, height: 56, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 0 }
-              ]}
-              focusedStyle={styles.tvFavoriteFocused}
-              nextFocusLeft={
-                favoriteButtonRef?.current
-                  ? findNodeHandle(favoriteButtonRef.current) || undefined
-                  : undefined
-              }
-              nextFocusRight={
-                ratingButtonRef?.current
-                  ? findNodeHandle(ratingButtonRef.current) || undefined
-                  : undefined
-              }
-              nextFocusDown={
-                actorRefs?.current?.[0]
-                  ? findNodeHandle(actorRefs.current[0]) || undefined
-                  : undefined
-              }
-            >
-              <Ionicons
-                name={isWatchLater ? 'bookmark' : 'bookmark-outline'}
-                size={28}
-                color="#fff"
-              />
-            </TVFocusable>
-          )}
-
-          <TVFocusable
-            ref={ratingButtonRef}
-            onPress={onOpenRatingModal}
-            style={[styles.tvFavoriteButton, { width: 56, height: 56, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 0 }]}
-            focusedStyle={styles.tvFavoriteFocused}
-            nextFocusLeft={
-              watchLaterButtonRef?.current
-                ? findNodeHandle(watchLaterButtonRef.current) || undefined
-                : favoriteButtonRef?.current
-                ? findNodeHandle(favoriteButtonRef.current) || undefined
-                : undefined
-            }
-            nextFocusDown={
-              actorRefs?.current?.[0]
-                ? findNodeHandle(actorRefs.current[0]) || undefined
-                : undefined
-            }
-          >
-            <Ionicons
-              name={userRating ? 'star' : 'star-outline'}
-              size={28}
-              color="#F5C518"
-            />
-          </TVFocusable>
-        </View>
-
-        {/* PROGRESS */}
-        {movieProgress > 0 && movieProgress < 0.95 && (
-          <View style={styles.tvMovieProgressContainer}>
-            <View
-              style={[
-                styles.tvMovieProgress,
-                { width: `${movieProgress * 100}%` },
-              ]}
-            />
-          </View>
-        )}
-
-        {/* OVERVIEW */}
-        {media.overview && (
-          <ThemedText style={styles.tvOverview} numberOfLines={5}>
-            {media.overview}
-          </ThemedText>
-        )}
-      </View>
-    );
-  }
-
-  /*
-   * ============================================================
-   * TV SERIES HERO
-   * ============================================================
-   */
-  if (isTV && !isMovie) {
-    return (
-      <View>
-        <ThemedText style={[styles.tvCategory, { fontSize: 16, marginBottom: 8 }]}>DİZİ</ThemedText>
-
-        <ThemedText style={[styles.tvSeriesTitle, { fontSize: 48, lineHeight: 56, fontWeight: 'bold' }]} numberOfLines={3}>
-          {media.title}
-        </ThemedText>
-
-        <View style={[styles.tvMeta, { gap: 16, marginVertical: 16, alignItems: 'center' }]}>
-          {media.rating && (
-            <View style={[styles.tvRatingBadge, { paddingHorizontal: 12, paddingVertical: 6, gap: 6 }]}>
-              <Ionicons name="star" size={28} color="#F5C518" />
-              <ThemedText style={[styles.tvRatingText, { fontSize: 20 }]}>{media.rating}</ThemedText>
-            </View>
-          )}
-
-          {media.year && (
-            <ThemedText style={[styles.tvMetaText, { fontSize: 20 }]}>{media.year}</ThemedText>
-          )}
-
-          <ThemedText style={[styles.tvMetaDot, { fontSize: 20 }]}>•</ThemedText>
-
-          <ThemedText style={[styles.tvMetaText, { fontSize: 20 }]}>
-            {seasonsCount} Sezon
-          </ThemedText>
-        </View>
-
-        {/* ACTION */}
-        <View style={[styles.tvSeriesActionRow, { gap: 16 }]}>
-          <TVFocusable
-            ref={playButtonRef}
-            onPress={onPlay}
-            style={[styles.tvPlayButton, { height: 62, paddingHorizontal: 32, gap: 12 }]}
-            focusedStyle={styles.tvPlayButtonFocused}
-            nextFocusUp={
-              closeButtonRef?.current
-                ? findNodeHandle(closeButtonRef.current) || undefined
-                : undefined
-            }
-            nextFocusRight={
-              trailerButtonRef?.current
-                ? findNodeHandle(trailerButtonRef.current) || undefined
-                : favoriteButtonRef?.current
-                ? findNodeHandle(favoriteButtonRef.current) || undefined
-                : undefined
-            }
-          >
-            {({ focused }) => (
-              <>
-                <Ionicons
-                  name="play"
-                  size={28}
-                  color={focused ? '#fff' : '#000'}
-                />
-                <ThemedText
-                  style={[
-                    styles.tvPlayText,
-                    { color: focused ? '#fff' : '#000', fontSize: 18, fontWeight: 'bold' },
-                  ]}
-                >
-                  {movieProgress > 0 && movieProgress < 0.95
-                    ? 'Devam Et'
-                    : 'Oynat'}
-                </ThemedText>
-              </>
-            )}
-          </TVFocusable>
-
-          {trailerKey && (
-            <TVFocusable
-              ref={trailerButtonRef}
-              onPress={onOpenTrailer}
-              style={[styles.tvTrailerButton, { height: 62, paddingHorizontal: 32, gap: 12 }]}
-              focusedStyle={styles.tvTrailerButtonFocused}
-              nextFocusLeft={
-                findNodeHandle(playButtonRef.current) || undefined
-              }
-              nextFocusRight={
-                favoriteButtonRef?.current
-                  ? findNodeHandle(favoriteButtonRef.current) || undefined
-                  : undefined
-              }
-            >
-              <Ionicons name="film-outline" size={26} color="#fff" />
-              <ThemedText style={[styles.tvTrailerText, { fontSize: 18, fontWeight: 'bold' }]}>Fragman</ThemedText>
-            </TVFocusable>
-          )}
-
-          <TVFocusable
-            ref={favoriteButtonRef}
-            onPress={onToggleFavorite}
-            style={[
-              styles.tvFavoriteButton,
-              isFav && styles.tvFavoriteActive,
-              { width: 56, height: 56, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 0 }
-            ]}
-            focusedStyle={styles.tvFavoriteFocused}
-            nextFocusLeft={
-              trailerButtonRef?.current
-                ? findNodeHandle(trailerButtonRef.current) || undefined
-                : findNodeHandle(playButtonRef.current) || undefined
-            }
-            nextFocusRight={
-              watchLaterButtonRef?.current
-                ? findNodeHandle(watchLaterButtonRef.current) || undefined
-                : ratingButtonRef?.current
-                ? findNodeHandle(ratingButtonRef.current) || undefined
-                : undefined
-            }
-          >
-            <Ionicons
-              name={isFav ? 'heart' : 'heart-outline'}
-              size={28}
-              color="#fff"
-            />
-          </TVFocusable>
-
-          {onToggleWatchLater && (
-            <TVFocusable
-              ref={watchLaterButtonRef}
-              onPress={onToggleWatchLater}
-              style={[
-                styles.tvFavoriteButton,
-                isWatchLater && styles.tvFavoriteActive,
-                { width: 56, height: 56, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 0 }
-              ]}
-              focusedStyle={styles.tvFavoriteFocused}
-              nextFocusLeft={
-                favoriteButtonRef?.current
-                  ? findNodeHandle(favoriteButtonRef.current) || undefined
-                  : undefined
-              }
-              nextFocusRight={
-                ratingButtonRef?.current
-                  ? findNodeHandle(ratingButtonRef.current) || undefined
-                  : undefined
-              }
-            >
-              <Ionicons
-                name={isWatchLater ? 'bookmark' : 'bookmark-outline'}
-                size={28}
-                color="#fff"
-              />
-            </TVFocusable>
-          )}
-
-          <TVFocusable
-            ref={ratingButtonRef}
-            onPress={onOpenRatingModal}
-            style={[styles.tvFavoriteButton, { width: 56, height: 56, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 0 }]}
-            focusedStyle={styles.tvFavoriteFocused}
-            nextFocusLeft={
-              watchLaterButtonRef?.current
-                ? findNodeHandle(watchLaterButtonRef.current) || undefined
-                : favoriteButtonRef?.current
-                ? findNodeHandle(favoriteButtonRef.current) || undefined
-                : undefined
-            }
-          >
-            <Ionicons
-              name={userRating ? 'star' : 'star-outline'}
-              size={28}
-              color="#F5C518"
-            />
-          </TVFocusable>
-
-          {onStartWatchParty && (
-            <TVFocusable
-              onPress={onStartWatchParty}
-              style={[styles.tvFavoriteButton, { width: 56, height: 56, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 0 }]}
-              focusedStyle={styles.tvFavoriteFocused}
-              nextFocusLeft={
-                ratingButtonRef?.current
-                  ? findNodeHandle(ratingButtonRef.current) || undefined
-                  : undefined
-              }
-            >
-              <Ionicons
-                name="people"
-                size={28}
-                color="#3B82F6"
-              />
-            </TVFocusable>
-          )}
-        </View>
-
-        {/* GENRES */}
-        {genres ? (
-          <View style={styles.tvGenreRow}>
-            {genreList.map((genre, index) => (
-              <View key={`${genre}-${index}`} style={styles.tvGenrePill}>
-                <ThemedText style={styles.tvGenreText}>{genre}</ThemedText>
-              </View>
-            ))}
-          </View>
-        ) : null}
-
-        {/* OVERVIEW */}
-        {media.overview && (
-          <ThemedText style={styles.tvOverview} numberOfLines={7}>
-            {media.overview}
-          </ThemedText>
-        )}
-      </View>
-    );
-  }
+  if (isTV) return <TVDetailHero {...{
+  media,
+  isMovie,
+  isTV,
+  styles,
+  movieRuntime,
+  seasonsCount,
+  genres,
+  genreList,
+  movieProgress,
+  isFav,
+  isWatchLater,
+  userRating,
+  trailerKey,
+  playButtonRef,
+  trailerButtonRef,
+  favoriteButtonRef,
+  watchLaterButtonRef,
+  ratingButtonRef,
+  closeButtonRef,
+  actorRefs,
+  firstEpisodeRef,
+  firstContentNodeId,
+  onPlay,
+  onToggleFavorite,
+  onToggleWatchLater,
+  onOpenRatingModal,
+  onOpenTrailer,
+  onStartWatchParty,
+  onPlayOnTv,
+  onDownload,
+  downloadStatus,
+  downloadProgress,
+}} />;
 
   /*
    * ============================================================

@@ -1,3 +1,4 @@
+import { TVModalSurface } from '@/components/TVModalSurface';
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -44,6 +45,7 @@ function NativeTrailerPlayer({
       style={{ width, height }}
       contentFit="contain"
       nativeControls={true}
+      playsInline={true}
     />
   );
 }
@@ -54,7 +56,7 @@ export function TrailerModal({
   youtubeKey,
   title,
 }: TrailerModalProps) {
-  const { width } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
   const [directStreamUrl, setDirectStreamUrl] = useState<string | null>(null);
   const [resolving, setResolving] = useState(true);
   const [playing, setPlaying] = useState(true);
@@ -73,7 +75,7 @@ export function TrailerModal({
   // 16:9 Ekran hesaplaması
   const isTablet = width > 600;
   const videoWidth = isTV
-    ? Math.min(width * 0.85, 1200)
+    ? Math.min(width * 0.85, (height - 120) * 16 / 9, 1200)
     : isTablet
     ? Math.min(width * 0.9, 900)
     : width - 32;
@@ -108,7 +110,7 @@ export function TrailerModal({
   if (!visible || !youtubeKey) return null;
 
   return (
-    <View style={styles.modalOverlay} pointerEvents="box-none">
+    <TVModalSurface onClose={onClose} style={styles.modalOverlay} pointerEvents="box-none">
       {/* 1. Backdrop tıklandığında kapat (Dış alana dokunma) */}
       <TouchableWithoutFeedback onPress={onClose}>
         <View style={styles.backdrop} />
@@ -128,7 +130,7 @@ export function TrailerModal({
           <TVFocusable
             hasTVPreferredFocus={isTV}
             onPress={onClose}
-            style={styles.closeButton}
+            style={[styles.closeButton, isTV && { width: 48, height: 48 }]}
             focusedStyle={styles.closeButtonFocused}
             accessibilityLabel="Kapat"
           >
@@ -161,7 +163,7 @@ export function TrailerModal({
           )}
         </View>
       </View>
-    </View>
+    </TVModalSurface>
   );
 }
 

@@ -1,3 +1,5 @@
+import { TVModalSurface } from '@/components/TVModalSurface';
+import { TVTouchable } from '@/components/TVTouchable';
 import React from 'react';
 import {
   View,
@@ -42,7 +44,7 @@ export function SettingsMenuModal({
   if (!visible) return null;
 
   return (
-    <View style={styles.settingsOverlay}>
+    <TVModalSurface onClose={onClose} style={styles.settingsOverlay}>
       <TouchableWithoutFeedback onPress={onClose}>
         <View style={styles.settingsCloseMask} />
       </TouchableWithoutFeedback>
@@ -59,20 +61,21 @@ export function SettingsMenuModal({
               <Text style={styles.headerSubtitle}>Oynatıcı ve sistem tercihleri</Text>
             </View>
           </View>
-          <TouchableOpacity
+          <TVTouchable
+            accessibilityLabel="Kapat"
             style={styles.closeBtn}
             onPress={onClose}
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
           >
             <Ionicons name="close" size={20} color="#8E8E93" />
-          </TouchableOpacity>
+          </TVTouchable>
         </View>
 
         <View style={styles.divider} />
 
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
           {/* 1. Arka Planda Ses Oynatma */}
-          {onToggleBackgroundAudio && (
+          {!Platform.isTV && onToggleBackgroundAudio && (
             <TVFocusable
               style={[styles.settingCard, allowBackgroundAudio && styles.settingCardActive]}
               focusedStyle={{
@@ -238,7 +241,7 @@ export function SettingsMenuModal({
           )}
         </ScrollView>
       </View>
-    </View>
+    </TVModalSurface>
   );
 }
 
@@ -301,7 +304,7 @@ const styles = StyleSheet.create({
   },
   headerSubtitle: {
     color: '#71717A',
-    fontSize: 11,
+    fontSize: Platform.isTV ? 15 : 11,
     marginTop: 1,
   },
   closeBtn: {
@@ -349,7 +352,7 @@ const styles = StyleSheet.create({
   },
   cardTitle: {
     color: '#FFFFFF',
-    fontSize: 14,
+    fontSize: Platform.isTV ? 17 : 14,
     fontWeight: '600',
     marginBottom: 3,
   },

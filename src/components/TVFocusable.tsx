@@ -19,6 +19,7 @@ export type TVFocusableProps = {
   onBlur?: (event?: any) => void;
   style?: StyleProp<ViewStyle> | ((state: { focused: boolean; pressed?: boolean }) => StyleProp<ViewStyle>);
   focusedStyle?: ViewStyle;
+  containerStyle?: StyleProp<ViewStyle>;
   disabled?: boolean;
   hasTVPreferredFocus?: boolean;
   nextFocusDown?: number;
@@ -38,6 +39,7 @@ export const TVFocusable = React.forwardRef<any, TVFocusableProps>(({
   onBlur,
   style,
   focusedStyle,
+  containerStyle,
   disabled = false,
   hasTVPreferredFocus,
   nextFocusDown,
@@ -53,16 +55,18 @@ export const TVFocusable = React.forwardRef<any, TVFocusableProps>(({
   const theme = useTheme();
 
   const scaleAnim = useRef(new Animated.Value(1)).current;
+  const lastPressAtRef = useRef(0);
   const activeFocused = !disabled && isFocused;
 
   // TV 60fps Native Driver hardware-accelerated smooth zoom transition
   useEffect(() => {
     if (!Platform.isTV) return;
     Animated.timing(scaleAnim, {
-      toValue: activeFocused ? 1.06 : 1.0,
+      toValue: activeFocused ? 1.03 : 1.0,
       duration: activeFocused ? 120 : 90,
       easing: activeFocused ? Easing.out(Easing.cubic) : Easing.inOut(Easing.ease),
       useNativeDriver: true,
+      isInteraction: false,
     }).start();
   }, [activeFocused, scaleAnim]);
 
@@ -93,6 +97,11 @@ export const TVFocusable = React.forwardRef<any, TVFocusableProps>(({
 
   const handlePress = (e?: any) => {
     if (disabled) return;
+    if (Platform.isTV) {
+      const now = Date.now();
+      if (now - lastPressAtRef.current < 250) return;
+      lastPressAtRef.current = now;
+    }
     // Prevent focus bubbling / event propagation to parent Pressables or overlay backdrops
     if (e && typeof e.stopPropagation === 'function') {
       e.stopPropagation();
@@ -110,9 +119,9 @@ export const TVFocusable = React.forwardRef<any, TVFocusableProps>(({
         borderWidth: 3,
         shadowColor: '#FFFFFF',
         shadowOffset: { width: 0, height: 0 },
-        shadowOpacity: 0.8,
-        shadowRadius: 10,
-        elevation: 12,
+        shadowOpacity: 0,
+        shadowRadius: 0,
+        elevation: 0,
         zIndex: 10,
       } as ViewStyle)
     : ({
@@ -130,7 +139,7 @@ export const TVFocusable = React.forwardRef<any, TVFocusableProps>(({
   const rawFocusedStyle = focusedStyle || defaultFocusedStyle;
   // On TV, animated transform is driven by the outer Animated.View at 60fps, so strip static transform
   const resolvedFocusedStyle = Platform.isTV && rawFocusedStyle
-    ? { ...rawFocusedStyle, transform: undefined }
+    ? { ...rawFocusedStyle, borderColor: rawFocusedStyle.borderColor || '#FFFFFF', borderWidth: Math.max(2, rawFocusedStyle.borderWidth || 0), transform: undefined }
     : rawFocusedStyle;
 
   // Cast properties to any to support platform-specific TV props smoothly without type issues
@@ -190,6 +199,7 @@ export const TVFocusable = React.forwardRef<any, TVFocusableProps>(({
       <Animated.View
         style={[
           { transform: [{ scale: scaleAnim }] },
+          containerStyle,
           activeFocused && { zIndex: 20 },
         ]}
         pointerEvents="box-none"
@@ -220,4 +230,3 @@ const styles = StyleSheet.create({
     ...(Platform.OS === 'web' ? ({ cursor: 'not-allowed' } as any) : {}),
   },
 });
-
