@@ -157,6 +157,7 @@ export function DiscoveryHubModal({
                 {/* 1. GELİŞMİŞ ARAMA (İlk TV Odağı) */}
                 <TVFocusable
                   hasTVPreferredFocus={isTV}
+                  containerStyle={isTV ? styles.optionContainerTV : undefined}
                   style={[styles.option, isTV && styles.optionTV]}
                   focusedStyle={isTV ? StyleSheet.flatten([styles.optionFocused, styles.optionFocusedTV]) : undefined}
                   onPress={() => handleSelect(onSelectSearch)}
@@ -195,6 +196,7 @@ export function DiscoveryHubModal({
 
                 {/* 2. REELS FRAGMANLAR */}
                 <TVFocusable
+                  containerStyle={isTV ? styles.optionContainerTV : undefined}
                   style={[styles.option, isTV && styles.optionTV]}
                   focusedStyle={isTV ? StyleSheet.flatten([styles.optionFocused, styles.reelsFocused, styles.optionFocusedTV]) : undefined}
                   onPress={() => handleSelect(onSelectReels)}
@@ -240,6 +242,7 @@ export function DiscoveryHubModal({
 
                 {/* 3. VİZYON TAKVİMİ */}
                 <TVFocusable
+                  containerStyle={isTV ? styles.optionContainerTV : undefined}
                   style={[styles.option, isTV && styles.optionTV]}
                   focusedStyle={isTV ? StyleSheet.flatten([styles.optionFocused, styles.calendarFocused, styles.optionFocusedTV]) : undefined}
                   onPress={() => handleSelect(onSelectComingSoon)}
@@ -279,6 +282,7 @@ export function DiscoveryHubModal({
                 {/* 4. İNDİRİLENLER */}
                 {onSelectDownloads && (
                   <TVFocusable
+                    containerStyle={isTV ? styles.optionContainerTV : undefined}
                     style={[styles.option, isTV && styles.optionTV]}
                     focusedStyle={isTV ? StyleSheet.flatten([styles.optionFocused, styles.optionFocusedTV]) : undefined}
                     onPress={() => handleSelect(onSelectDownloads)}
@@ -376,9 +380,9 @@ const styles = StyleSheet.create({
     elevation: 25,
   },
   modalTV: {
-    maxWidth: 960,
-    padding: 34,
-    borderRadius: 28,
+    maxWidth: 860,
+    padding: 26,
+    borderRadius: 22,
     borderWidth: 2,
     borderColor: 'rgba(255,255,255,0.18)',
   },
@@ -470,7 +474,8 @@ const styles = StyleSheet.create({
   },
   optionsTV: {
     flexDirection: 'row',
-    gap: 16,
+    flexWrap: 'wrap',
+    gap: 12,
   },
   option: {
     minHeight: 90,
@@ -484,13 +489,20 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   optionTV: {
-    flex: 1,
-    minHeight: 220,
-    borderRadius: 22,
-    padding: 22,
-    alignItems: 'flex-start',
-    flexDirection: 'column',
-    justifyContent: 'space-between',
+    width: '100%',
+    height: '100%',
+    minHeight: 112,
+    borderRadius: 16,
+    padding: 14,
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'flex-start',
+  },
+  optionContainerTV: {
+    width: '48%',
+    height: 112,
+    flexGrow: 0,
+    flexShrink: 0,
   },
   optionFocused: {
     backgroundColor: '#26262B',
@@ -543,10 +555,11 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   iconBoxTV: {
-    width: 68,
-    height: 68,
-    borderRadius: 20,
-    marginBottom: 16,
+    width: 58,
+    height: 58,
+    borderRadius: 16,
+    marginRight: 14,
+    marginBottom: 0,
   },
   searchIconBox: {
     backgroundColor: 'rgba(229,9,20,0.15)',

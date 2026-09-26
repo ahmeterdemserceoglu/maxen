@@ -53,6 +53,7 @@ export function useStreamResolver({
     }
 
     const type = isMovie ? 'movie' : 'tv';
+    const mediaKey = `${type}_${tmdbId}_${seasonNum}_${episodeNum}`;
     let isCancelled = false;
 
     async function fetchBackendStream() {
@@ -90,6 +91,7 @@ export function useStreamResolver({
               provider: data.provider || 'Maxen Backend',
               expiresAt: Date.now() + 2 * 60 * 60 * 1000,
               headers: data.headers || {}
+              ,mediaKey
             });
           }
         } else {
@@ -105,7 +107,7 @@ export function useStreamResolver({
     }
 
     const savedSession = streamSessionManager.getSession();
-    if (savedSession) {
+    if (savedSession?.mediaKey === mediaKey) {
       console.log(`[useStreamResolver] Using saved session.`);
       setStreamUrl(savedSession.streamUrl);
       isStreamFoundRef.current = true;
@@ -129,6 +131,7 @@ export function useStreamResolver({
         provider: res.provider || 'Preheated Cache',
         expiresAt: Date.now() + 2 * 60 * 60 * 1000,
         headers: res.headers || {}
+        ,mediaKey
       });
       isStreamFoundRef.current = true;
       setResolving(false);

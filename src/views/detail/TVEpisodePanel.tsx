@@ -52,7 +52,7 @@ export function TVEpisodePanel(p: SeasonEpisodeListProps) {
         const progress = getEpisodeProgress(p.localProgresses, p.tmdbId, ep, season);
         const number = ep.episode_number ?? ep.IndexNumber ?? index + 1;
         return <View style={s.row}>
-          <TVFocusable ref={(el: any) => registerEpisodeRef(index, el)} style={s.card} focusedStyle={s.focused} onPress={() => p.onPlayEpisode(ep)}
+          <TVFocusable ref={(el: any) => registerEpisodeRef(index, el)} style={s.card} focusedStyle={s.episodeFocused} onPress={() => p.onPlayEpisode(ep)}
             onFocus={() => list.current?.scrollToIndex({ index, viewPosition: 0.5, animated: true })}
             nextFocusLeft={playNodeId}
             nextFocusUp={index === 0 ? seasonNodeId : episodeNodeIds[index - 1]}
@@ -92,6 +92,7 @@ const s = StyleSheet.create({
   heading: { fontSize: 22, fontWeight: '700', color: '#fff' }, text: { fontSize: 17, color: '#fff' },
   season: { minHeight: 48, paddingHorizontal: 18, justifyContent: 'center', backgroundColor: '#262626' },
   focused: { borderColor: '#fff', borderWidth: 3, backgroundColor: '#252b35' },
+  episodeFocused: { borderColor: '#fff', borderWidth: 3, backgroundColor: '#252b35', transform: [{ scale: 1 }] },
   list: { paddingHorizontal: 8, paddingBottom: 24 }, row: { height: ROW_HEIGHT, paddingVertical: 6 },
   card: { height: ROW_HEIGHT - 12, flexDirection: 'row', alignItems: 'center', padding: 8, gap: 12, backgroundColor: '#161c24' },
   imageBox: { width: 128, height: 80, backgroundColor: '#10141a', borderRadius: 6, overflow: 'hidden' }, image: { width: '100%', height: '100%' },

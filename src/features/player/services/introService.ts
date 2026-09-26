@@ -2,6 +2,8 @@ import { Platform } from 'react-native';
 import { TMDB_BASE_URL } from '@/config/tmdb';
 import { API_BASE_URL } from '@/config/api';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { withoutStaleEpisodePlayback } from '@/utils/episodePlayback';
+import { isAiredEpisode, isEpisodeAdjacent } from '@/utils/playerReliability';
 
 export interface IntroSegment {
   start_sec: number;
@@ -110,9 +112,13 @@ export async function getNextEpisodeMedia(currentMedia: any): Promise<any | null
     const currentIndex = currentMedia.playlistIndex as number | undefined;
 
     // 1. Eğer playlist varsa sıradakini al
-    if (playlist && currentIndex !== undefined && currentIndex < playlist.length - 1) {
+    if (playlist && currentIndex !== undefined && currentIndex >= 0 && currentIndex < playlist.length - 1) {
       const nextEp = playlist[currentIndex + 1];
-      return {
+      if (!isAiredEpisode(nextEp)) {
+        console.log('[IntroService] Playlist sıradaki bölüm henüz yayınlanmamış:', nextEp.air_date);
+        return null;
+      }
+      return withoutStaleEpisodePlayback({
         ...currentMedia,
         ...nextEp,
         id: nextEp.Id || nextEp.id || currentMedia.id,
@@ -123,8 +129,7 @@ export async function getNextEpisodeMedia(currentMedia: any): Promise<any | null
         episode_number: nextEp.IndexNumber || nextEp.episode_number || (currentMedia.episode_number || 1) + 1,
         playlist,
         playlistIndex: currentIndex + 1,
-        positionSeconds: 0,
-      };
+      });
     }
 
     // 2. Playlist yoksa TMDB üzerinden sonraki bölümü bul
@@ -141,7 +146,11 @@ export async function getNextEpisodeMedia(currentMedia: any): Promise<any | null
       const nextEp = episodes.find((ep: any) => ep.episode_number === curEpisode + 1);
 
       if (nextEp) {
-        return {
+        if (!isAiredEpisode(nextEp)) {
+          console.log('[IntroService] Sıradaki bölüm henüz yayınlanmamış (air_date gelecekte):', nextEp.air_date);
+          return null;
+        }
+        return withoutStaleEpisodePlayback({
           ...currentMedia,
           ...nextEp,
           id: `tmdb-${nextEp.id}`,
@@ -150,16 +159,15 @@ export async function getNextEpisodeMedia(currentMedia: any): Promise<any | null
           type: 'tv',
           season_number: curSeason,
           episode_number: curEpisode + 1,
-          positionSeconds: 0,
-        };
+        });
       } else {
         // Mevcut sezonda sonraki bölüm yoksa bir sonraki sezonun 1. bölümünü dene
         const nextSeasonRes = await fetch(`${TMDB_BASE_URL}/tv/${tmdbId}/season/${curSeason + 1}?language=tr-TR`);
         if (nextSeasonRes.ok) {
           const nextSeasonData = await nextSeasonRes.json();
           const firstEpOfNextSeason = (nextSeasonData?.episodes || [])[0];
-          if (firstEpOfNextSeason) {
-            return {
+          if (firstEpOfNextSeason && isAiredEpisode(firstEpOfNextSeason)) {
+            return withoutStaleEpisodePlayback({
               ...currentMedia,
               ...firstEpOfNextSeason,
               id: `tmdb-${firstEpOfNextSeason.id}`,
@@ -168,8 +176,7 @@ export async function getNextEpisodeMedia(currentMedia: any): Promise<any | null
               type: 'tv',
               season_number: curSeason + 1,
               episode_number: 1,
-              positionSeconds: 0,
-            };
+            });
           }
         }
       }
@@ -178,12 +185,6 @@ export async function getNextEpisodeMedia(currentMedia: any): Promise<any | null
     console.warn('[IntroService] Sonraki bölüm bulunamadı:', error);
   }
 
-  // Fallback: Sadece bölüm numarasını 1 artırarak oluştur
-  const nextEpNum = (currentMedia.episode_number || currentMedia.EpisodeNumber || 1) + 1;
-  return {
-    ...currentMedia,
-    type: 'tv',
-    episode_number: nextEpNum,
-    positionSeconds: 0,
-  };
+  // Ağ hatasında veya sezon sonunda doğrulanmamış/sahte bir bölüm üretme.
+  return null;
 }

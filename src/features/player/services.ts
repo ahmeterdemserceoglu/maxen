@@ -1,5 +1,12 @@
 export const RESOLVER_PROVIDERS = [
   {
+    name: 'VixSrc',
+    getUrl: (id: string, isTv: boolean, s: number, e: number) =>
+      isTv
+        ? `https://vixsrc.to/embed/tv/${id}/${s}/${e}`
+        : `https://vixsrc.to/embed/movie/${id}`,
+  },
+  {
     name: 'VidLink',
     getUrl: (id: string, isTv: boolean, s: number, e: number) =>
       isTv
@@ -42,20 +49,6 @@ export const RESOLVER_PROVIDERS = [
         : `https://vidsrc.net/embed/movie/${id}`,
   },
   {
-    name: 'Vidsrc.icu',
-    getUrl: (id: string, isTv: boolean, s: number, e: number) =>
-      isTv
-        ? `https://vidsrc.icu/embed/tv/${id}/${s}/${e}`
-        : `https://vidsrc.icu/embed/movie/${id}`,
-  },
-  {
-    name: 'VidSrc.pro',
-    getUrl: (id: string, isTv: boolean, s: number, e: number) =>
-      isTv
-        ? `https://vidsrc.pro/embed/tv/${id}/${s}/${e}`
-        : `https://vidsrc.pro/embed/movie/${id}`,
-  },
-  {
     name: 'VidSrc.in',
     getUrl: (id: string, isTv: boolean, s: number, e: number) =>
       isTv
@@ -68,27 +61,6 @@ export const RESOLVER_PROVIDERS = [
       isTv
         ? `https://vidsrc.xyz/embed/tv?tmdb=${id}&season=${s}&episode=${e}`
         : `https://vidsrc.xyz/embed/movie?tmdb=${id}`,
-  },
-  {
-    name: 'VidSrc.vip',
-    getUrl: (id: string, isTv: boolean, s: number, e: number) =>
-      isTv
-        ? `https://vidsrc.vip/embed/tv/${id}/${s}/${e}`
-        : `https://vidsrc.vip/embed/movie/${id}`,
-  },
-  {
-    name: 'AutoEmbed',
-    getUrl: (id: string, isTv: boolean, s: number, e: number) =>
-      isTv
-        ? `https://player.autoembed.cc/embed/tv/${id}/${s}/${e}`
-        : `https://player.autoembed.cc/embed/movie/${id}`,
-  },
-  {
-    name: 'MoviesAPI',
-    getUrl: (id: string, isTv: boolean, s: number, e: number) =>
-      isTv
-        ? `https://moviesapi.club/tv/${id}-${s}-${e}`
-        : `https://moviesapi.club/movie/${id}`,
   },
   {
     name: 'SmashyStream',

@@ -1,0 +1,18 @@
+:root { color-scheme: dark; font-family: Inter, system-ui, sans-serif; background:#050507; color:#fff; }
+* { box-sizing:border-box; }
+body { margin:0; min-height:100vh; background:radial-gradient(circle at 50% -20%,#281014 0,#08080b 42%,#030304 100%); }
+header { height:64px; display:flex; align-items:center; gap:14px; padding:0 30px; background:#0b0b0f; border-bottom:1px solid #24242a; }
+header strong { color:#e50914; font-size:25px; letter-spacing:3px; } header span { color:#8f8f98; }
+main { min-height:calc(100vh - 64px); display:grid; place-items:center; padding:24px; }
+.setup { width:min(680px,100%); padding:38px; background:#111116; border:1px solid #292932; border-radius:20px; box-shadow:0 24px 80px #000; }
+h1 { margin:0 0 10px; font-size:30px; } p { color:#aaaab3; margin:0 0 28px; }
+form { display:grid; grid-template-columns:1fr 110px; gap:12px; } input,select,button { border-radius:11px; border:1px solid #34343d; background:#1a1a20; color:#fff; padding:14px 16px; font-size:15px; }
+#results { display:grid; grid-template-columns:repeat(auto-fill,minmax(120px,1fr)); gap:14px; margin-top:24px; max-height:52vh; overflow:auto; }
+.card { padding:0; overflow:hidden; text-align:left; background:#19191f; border:1px solid #2e2e37; font-weight:500; }
+.card:hover { background:#24242c; transform:translateY(-2px); }.card img,.posterPlaceholder{width:100%;aspect-ratio:2/3;object-fit:cover;background:#27272f;display:grid;place-items:center}.card div:last-child{padding:10px}.card small{display:block;color:#999;margin-top:4px}
+#episodePicker { margin-top:22px; padding:20px; background:#18181e; border-radius:14px; } #episodePicker[hidden]{display:none} #episodePicker h2{margin:0 0 14px} #episodePicker select{margin-right:10px} #playEpisode{margin-top:12px}
+button { border:0; background:#e50914; font-weight:700; cursor:pointer; } button:hover { background:#ff1723; }
+#status { min-height:24px; margin-top:18px; color:#c6c6ce; } #status.error { color:#ff737b; }
+.player { width:min(1500px,100%); } video { width:100%; max-height:calc(100vh - 150px); background:#000; border-radius:14px; box-shadow:0 20px 80px #000; }
+#back { margin-top:12px; background:#24242b; }
+@media(max-width:620px){form{grid-template-columns:1fr}.setup{padding:24px}header{padding:0 18px}}

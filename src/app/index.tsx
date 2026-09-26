@@ -122,6 +122,7 @@ export default function Index() {
   const [isOffline, setIsOffline] = useState(!networkService.getStatus());
   const lastBackPressRef = useRef<number>(0);
   const videoOriginDetailRef = useRef<any>(null);
+  const handledWatchNextUrlRef = useRef<string | null>(null);
 
   const handleCloseActiveVideo = useCallback(() => {
     const originDetail = videoOriginDetailRef.current;
@@ -312,11 +313,49 @@ export default function Index() {
     activeTab,
   ]);
 
-  // Handle incoming TV QR deep links (maxen://tv-pair?code=...)
+  // Handle Android TV Watch Next and mobile TV-pair deep links.
   useEffect(() => {
     const handleUrl = async (event: { url: string }) => {
       const url = event.url;
       if (!url) return;
+
+      if (url.includes('maxen://watch')) {
+        if (!user?.uid || handledWatchNextUrlRef.current === url) return;
+        try {
+          const parsed = Linking.parse(url);
+          const value = (key: string) => {
+            const raw = parsed.queryParams?.[key];
+            return Array.isArray(raw) ? raw[0] : raw;
+          };
+          const id = String(value('id') || '').trim();
+          if (!id) return;
+
+          const type = value('type') === 'tv' ? 'tv' : 'movie';
+          const season = Number(value('season') || 1);
+          const episode = Number(value('episode') || 1);
+          const position = Number(value('position') || 0);
+          const title = String(value('title') || 'Maxen');
+          const poster = value('poster');
+
+          handledWatchNextUrlRef.current = url;
+          clearModals();
+          openVideo({
+            id,
+            tmdbId: id,
+            show_id: type === 'tv' ? id : undefined,
+            type,
+            title,
+            show_title: type === 'tv' ? title : undefined,
+            season_number: type === 'tv' ? season : undefined,
+            episode_number: type === 'tv' ? episode : undefined,
+            positionSeconds: Number.isFinite(position) ? position : 0,
+            posterUrl: typeof poster === 'string' ? poster : undefined,
+          });
+          return;
+        } catch (e) {
+          console.warn('Watch Next deep link parsing error:', e);
+        }
+      }
 
       if (url.includes('tv-pair') || url.includes('code=')) {
         try {
@@ -360,7 +399,7 @@ export default function Index() {
     return () => {
       sub.remove();
     };
-  }, [user?.uid, user?.email, user?.displayName, activeProfile?.id]);
+  }, [user?.uid, user?.email, user?.displayName, activeProfile?.id, clearModals, openVideo, profiles]);
 
   useEffect(() => {
     const onBackPress = () => {
@@ -488,16 +527,16 @@ export default function Index() {
   const renderActiveView = () => {
     switch (activeTab) {
       case 'home':
-        return <HomeView activeTab="home" profileId={profileId} />;
+        return <HomeView key="tv-home" activeTab="home" profileId={profileId} />;
       case 'movies':
         return isTV ? (
-          <HomeView activeTab="movies" profileId={profileId} />
+          <HomeView key="tv-movies" activeTab="movies" profileId={profileId} />
         ) : (
           <MediaHubView onSelectMedia={(media) => openDetail(media)} />
         );
       case 'tv':
         return isTV ? (
-          <HomeView activeTab="tv" profileId={profileId} />
+          <HomeView key="tv-series" activeTab="tv" profileId={profileId} />
         ) : (
           <MediaHubView onSelectMedia={(media) => openDetail(media)} />
         );
@@ -533,6 +572,7 @@ export default function Index() {
 
   const bottomInset = Math.max(insets.bottom, 8);
   const isNoModalOpen =
+    !showDiscoveryHub &&
     !showReelsModal &&
     !showComingSoonModal &&
     !showDownloadsModal &&

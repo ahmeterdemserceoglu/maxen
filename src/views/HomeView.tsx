@@ -24,6 +24,8 @@ export function HomeView({ activeTab, profileId }: HomeViewProps) {
   const isDesktopWeb = Platform.OS === 'web' && width > 768;
   // TV'de içerik alt çubuğun arkasına girmesin; 10-foot UI için geniş güvenli alan.
   const bottomPadding = isTV ? 160 : isDesktopWeb ? 100 : Math.max(insets.bottom + 96, 136);
+  const tvCanvasHeight = isTV ? (height <= 640 ? 280 : Math.round(height * 0.54)) : 0;
+  const tvCatalogHeight = isTV ? Math.max(250, height - tvCanvasHeight) : 0;
   const setActiveDetail = useUiStore((state) => state.setActiveDetail);
   const setActiveVideo = useUiStore((state) => state.setActiveVideo);
 
@@ -196,16 +198,20 @@ export function HomeView({ activeTab, profileId }: HomeViewProps) {
           }));
 
           const epIndex = episodes.findIndex((ep: any) => Number(ep.episode_number) === episode);
+          const hasExactEpisode = epIndex >= 0;
           setActiveVideo({
             ...item,
             id: cleanTmdbId,
             tmdbId: cleanTmdbId,
             show_id: cleanTmdbId,
             type: 'tv',
-            playlist: episodes,
-            playlistIndex: epIndex >= 0 ? epIndex : 0,
+            playlist: hasExactEpisode ? episodes : undefined,
+            playlistIndex: hasExactEpisode ? epIndex : undefined,
             season_number: season,
             episode_number: episode,
+            // TV stream URLs are episode-specific. Resolve the stored episode afresh.
+            savedStreamUrl: item.isOfflinePlayback ? item.savedStreamUrl : null,
+            savedStreamHeaders: item.isOfflinePlayback ? item.savedStreamHeaders : null,
           });
         } else {
           setActiveVideo({
@@ -216,6 +222,8 @@ export function HomeView({ activeTab, profileId }: HomeViewProps) {
             type: 'tv',
             season_number: season,
             episode_number: episode,
+            savedStreamUrl: item.isOfflinePlayback ? item.savedStreamUrl : null,
+            savedStreamHeaders: item.isOfflinePlayback ? item.savedStreamHeaders : null,
           });
         }
       } catch {
@@ -225,6 +233,8 @@ export function HomeView({ activeTab, profileId }: HomeViewProps) {
           tmdbId: cleanTmdbId,
           show_id: cleanTmdbId,
           type: 'tv',
+          savedStreamUrl: item.isOfflinePlayback ? item.savedStreamUrl : null,
+          savedStreamHeaders: item.isOfflinePlayback ? item.savedStreamHeaders : null,
         });
       }
     },
@@ -242,8 +252,8 @@ export function HomeView({ activeTab, profileId }: HomeViewProps) {
     try {
       list.scrollToIndex({
         index: rowIndex,
-        animated: true,
-        viewPosition: isTV ? 0.5 : 0.25,
+        animated: !isTV,
+        viewPosition: isTV ? 0 : 0.25,
         viewOffset: 0,
       });
     } catch (e) {
@@ -376,13 +386,17 @@ export function HomeView({ activeTab, profileId }: HomeViewProps) {
           onPressInfo={handlePressMedia}
           onFocus={handleHeroFocus}
           playBtnRef={heroPlayBtnRef}
+          canvasHeight={tvCanvasHeight}
         />
         <FlatList
           ref={mainVerticalListRef}
           data={sectionsData}
           renderItem={renderRow}
           keyExtractor={(item) => item.title}
-          style={styles.container}
+          style={[
+            styles.tvCatalogList,
+            { height: tvCatalogHeight },
+          ]}
           contentContainerStyle={[styles.contentContainer, { paddingBottom: bottomPadding }]}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
@@ -432,6 +446,7 @@ export function HomeView({ activeTab, profileId }: HomeViewProps) {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   tvContainer: { backgroundColor: '#0B0B0F' },
+  tvCatalogList: { flexGrow: 0, flexShrink: 0, width: '100%' },
   contentContainer: { paddingBottom: isTV ? 150 : 80 },
   emptyContainer: {
     justifyContent: 'center',

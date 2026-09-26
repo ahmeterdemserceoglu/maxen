@@ -72,9 +72,7 @@ export function NetflixWebNavbar({
         alignItems: 'center',
         justifyContent: 'space-between',
         padding: '0 48px',
-        backgroundColor: isScrolled ? 'rgba(20, 20, 20, 0.96)' : 'rgba(20, 20, 20, 0.25)',
-        backdropFilter: isScrolled ? 'blur(16px)' : 'blur(4px)',
-        WebkitBackdropFilter: isScrolled ? 'blur(16px)' : 'blur(4px)',
+        backgroundColor: '#0B0B0F',
         boxShadow: isScrolled ? '0 4px 20px rgba(0, 0, 0, 0.7)' : 'none',
         transition: 'background-color 0.4s ease, box-shadow 0.4s ease',
       }}

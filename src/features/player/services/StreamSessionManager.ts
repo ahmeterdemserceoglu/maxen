@@ -4,13 +4,13 @@ export interface StreamSession {
   expiresAt: number;
   headers?: Record<string, string>;
   referer?: string;
-  mediaKey?: string;
+  mediaKey: string;
 }
 
 type EventListener = (session: StreamSession | null) => void;
-type RefreshHandler = () => Promise<void>;
+type RefreshHandler = { mediaKey: string; run: () => Promise<void> };
 
-class StreamSessionManager {
+export class StreamSessionManager {
   private session: StreamSession | null = null;
   private listeners: EventListener[] = [];
   private refreshTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -29,20 +29,33 @@ class StreamSessionManager {
     return this.session;
   }
 
-  public setSession(session: StreamSession) {
+  public setSession(session: StreamSession): boolean {
+    if (!session.mediaKey) {
+      console.warn('[StreamSessionManager] Media key olmadan stream oturumu reddedildi.');
+      return false;
+    }
     this.session = session;
     this.notifyListeners();
     this.scheduleRefresh();
+    return true;
   }
 
-  public clearSession() {
+  public clearSession(mediaKey?: string): boolean {
+    if (mediaKey && this.session?.mediaKey !== mediaKey) return false;
     this.session = null;
     this.clearRefresh();
     this.notifyListeners();
+    return true;
   }
   
-  public setRefreshHandler(handler: RefreshHandler) {
-    this.refreshHandler = handler;
+  public setRefreshHandler(mediaKey: string, handler: () => Promise<void>) {
+    this.refreshHandler = { mediaKey, run: handler };
+  }
+
+  public clearRefreshHandler(mediaKey: string): boolean {
+    if (this.refreshHandler?.mediaKey !== mediaKey) return false;
+    this.refreshHandler = null;
+    return true;
   }
 
   public addListener(listener: EventListener) {
@@ -97,14 +110,16 @@ class StreamSessionManager {
   }
 
   private async executeRefresh() {
-    if (!this.refreshHandler) {
+    const handler = this.refreshHandler;
+    const activeMediaKey = this.session?.mediaKey;
+    if (!handler || !activeMediaKey || handler.mediaKey !== activeMediaKey) {
       console.warn('[StreamSessionManager] No refresh handler attached!');
       return;
     }
     
     console.log('[StreamSessionManager] Executing background stream refresh...');
     try {
-      await this.refreshHandler();
+      await handler.run();
       // On success, refreshHandler should internally call setSession which handles scheduling and notifying.
     } catch (e) {
       console.error('[StreamSessionManager] Background refresh ERROR:', e);

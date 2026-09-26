@@ -36,6 +36,8 @@ interface PlayerBottomBarProps {
   onToggleContentFit: () => void;
   onOpenEpisodesMenu?: () => void;
   prolongControls: () => void;
+  onProgressFocusChange?: (focused: boolean) => void;
+  preferTimelineFocus?: boolean;
 }
 
 export function PlayerBottomBar({
@@ -67,6 +69,8 @@ export function PlayerBottomBar({
   onToggleContentFit,
   onOpenEpisodesMenu,
   prolongControls,
+  onProgressFocusChange,
+  preferTimelineFocus = false,
 }: PlayerBottomBarProps) {
   const isTV = Platform.isTV;
 
@@ -184,17 +188,6 @@ export function PlayerBottomBar({
     <View style={styles.tvControlsContainer}>
       <View style={styles.tvActionRow}>
         <TVFocusable
-          style={styles.tvCtrlBtn}
-          focusedStyle={styles.tvCtrlBtnFocused}
-          onFocus={prolongControls}
-          onPress={onRewind}
-        >
-          <Ionicons name="play-back" size={20} color="#fff" />
-          <Text style={styles.tvCtrlBtnTxt}>-10s</Text>
-        </TVFocusable>
-
-        <TVFocusable
-          hasTVPreferredFocus={controlsVisible}
           style={styles.tvPlayBtn}
           accessibilityLabel={isPlaying ? 'Duraklat' : 'Oynat'}
           focusedStyle={styles.tvPlayBtnFocused}
@@ -204,16 +197,6 @@ export function PlayerBottomBar({
           {({ focused }) => (
             <Ionicons name={isPlaying ? 'pause' : 'play'} size={32} color="#fff" />
           )}
-        </TVFocusable>
-
-        <TVFocusable
-          style={styles.tvCtrlBtn}
-          focusedStyle={styles.tvCtrlBtnFocused}
-          onFocus={prolongControls}
-          onPress={onForward}
-        >
-          <Text style={styles.tvCtrlBtnTxt}>+10s</Text>
-          <Ionicons name="play-forward" size={20} color="#fff" />
         </TVFocusable>
 
         {!isMovie && onOpenEpisodesMenu && (
@@ -263,6 +246,8 @@ export function PlayerBottomBar({
         isSeeking={isSeeking}
         seekPreviewTime={seekPreviewTime}
         previewThumbnail={previewThumbnail}
+        onFocusChange={onProgressFocusChange}
+        hasTVPreferredFocus={preferTimelineFocus}
       />
       {isTV ? renderTVControls() : renderMobileControls()}
     </>

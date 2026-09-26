@@ -119,11 +119,6 @@ async function getVixSrcUrl(id, type, s, e, lang = '') {
             provider: 'VixSrc Direct',
           };
         }
-        return {
-          streamUrl: embedUrl,
-          isEmbed: true,
-          provider: 'VixSrc',
-        };
       }
     } else {
       const body = await res.text().catch(() => '');
@@ -179,52 +174,41 @@ async function getSmashyStream(id, type, s, e) {
   return extractDirectStream(targetUrl, 'https://embed.smashystream.com/', 'SmashyStream Direct');
 }
 
-async function resolveStream(tmdbId, type, season, episode, lang = '') {
-  // 1. Try VixSrc Direct HLS extraction (with preferred/detected audio language)
+async function resolveStream(tmdbId, type, season, episode, lang = '', directOnly = true) {
+  // 1. Try VixSrc Direct HLS extraction
   const vixResult = await getVixSrcUrl(tmdbId, type, season, episode, lang);
-  if (vixResult && vixResult.streamUrl) {
+  if (vixResult && vixResult.streamUrl && !vixResult.isEmbed) {
     return {
       provider: vixResult.provider,
       streamUrl: vixResult.streamUrl,
       referer: 'https://vixsrc.to/',
-      isEmbed: vixResult.isEmbed,
+      isEmbed: false,
     };
   }
 
   // 2. Try SuperEmbed Direct extraction probe
   const superEmbedResult = await getSuperEmbedStream(tmdbId, type, season, episode);
-  if (superEmbedResult && superEmbedResult.streamUrl) {
+  if (superEmbedResult && superEmbedResult.streamUrl && !superEmbedResult.isEmbed) {
     return {
       provider: superEmbedResult.provider,
       streamUrl: superEmbedResult.streamUrl,
       referer: superEmbedResult.referer || 'https://multiembed.mov/',
-      isEmbed: superEmbedResult.isEmbed,
+      isEmbed: false,
     };
   }
 
   // 3. Try SmashyStream Direct extraction probe
   const smashyResult = await getSmashyStream(tmdbId, type, season, episode);
-  if (smashyResult && smashyResult.streamUrl) {
+  if (smashyResult && smashyResult.streamUrl && !smashyResult.isEmbed) {
     return {
       provider: smashyResult.provider,
       streamUrl: smashyResult.streamUrl,
       referer: smashyResult.referer || 'https://embed.smashystream.com/',
-      isEmbed: smashyResult.isEmbed,
+      isEmbed: false,
     };
   }
 
-  // 4. Fallback to VidSrc.in
-  const vidSrcInUrl =
-    type === 'tv'
-      ? `https://vidsrc.in/embed/tv/${tmdbId}/${season}/${episode}`
-      : `https://vidsrc.in/embed/movie/${tmdbId}`;
-
-  return {
-    provider: 'VidSrc.in',
-    streamUrl: vidSrcInUrl,
-    referer: 'https://vidsrc.in/',
-    isEmbed: true,
-  };
+  return null;
 }
 
 export default async function handler(req, res) {
@@ -270,7 +254,7 @@ export default async function handler(req, res) {
   const lang = typeof rawLang === 'string' ? rawLang.trim().toLowerCase() : '';
 
   try {
-    const result = await resolveStream(tmdbId, type, season, episode, lang);
+    const result = await resolveStream(tmdbId, type, season, episode, lang, req.query?.direct === '1');
     if (!result || !result.streamUrl) {
       return res.status(404).json({ success: false, error: 'No stream available' });
     }
@@ -289,4 +273,3 @@ export default async function handler(req, res) {
     return res.status(500).json({ success: false, error: error.message || 'Internal Server Error' });
   }
 }
-

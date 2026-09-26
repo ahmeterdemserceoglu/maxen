@@ -1,6 +1,6 @@
 {
   "name": "maxen",
-  "version": "10.6.5",
+  "version": "10.6.6",
   "main": "expo-router/entry",
   "scripts": {
     "start": "expo start",
@@ -35,6 +35,7 @@
     "expo-web-browser": "~15.0.11",
     "firebase": "^11.10.0",
     "hls.js": "^1.7.2",
+    "promise": "8.3.0",
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "react-native": "npm:react-native-tvos@0.81.5-2",
@@ -51,6 +52,7 @@
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
+    "@expo/image-utils": "0.8.17",
     "@types/jest": "^30.0.0",
     "@types/react": "~19.1.10",
     "babel-preset-expo": "~54.0.10",
@@ -61,7 +63,9 @@
   },
   "expo": {
     "install": {
-      "exclude": ["react-native"]
+      "exclude": [
+        "react-native"
+      ]
     }
   },
   "private": true

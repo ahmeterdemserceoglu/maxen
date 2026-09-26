@@ -57,18 +57,23 @@ export const TVFocusable = React.forwardRef<any, TVFocusableProps>(({
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const lastPressAtRef = useRef(0);
   const activeFocused = !disabled && isFocused;
+  const requestedFocusScale = (() => {
+    if (!Platform.isTV || !focusedStyle || !Array.isArray(focusedStyle.transform)) return 1.055;
+    const scaleTransform = focusedStyle.transform.find((entry: any) => typeof entry?.scale === 'number') as any;
+    return scaleTransform?.scale || 1.055;
+  })();
 
   // TV 60fps Native Driver hardware-accelerated smooth zoom transition
   useEffect(() => {
     if (!Platform.isTV) return;
     Animated.timing(scaleAnim, {
-      toValue: activeFocused ? 1.03 : 1.0,
+      toValue: activeFocused ? requestedFocusScale : 1.0,
       duration: activeFocused ? 120 : 90,
       easing: activeFocused ? Easing.out(Easing.cubic) : Easing.inOut(Easing.ease),
       useNativeDriver: true,
       isInteraction: false,
     }).start();
-  }, [activeFocused, scaleAnim]);
+  }, [activeFocused, requestedFocusScale, scaleAnim]);
 
   // Reset focus state if component becomes disabled
   useEffect(() => {
@@ -139,7 +144,14 @@ export const TVFocusable = React.forwardRef<any, TVFocusableProps>(({
   const rawFocusedStyle = focusedStyle || defaultFocusedStyle;
   // On TV, animated transform is driven by the outer Animated.View at 60fps, so strip static transform
   const resolvedFocusedStyle = Platform.isTV && rawFocusedStyle
-    ? { ...rawFocusedStyle, borderColor: rawFocusedStyle.borderColor || '#FFFFFF', borderWidth: Math.max(2, rawFocusedStyle.borderWidth || 0), transform: undefined }
+    ? {
+        ...rawFocusedStyle,
+        borderColor: rawFocusedStyle.borderWidth === 0
+          ? (rawFocusedStyle.borderColor || 'transparent')
+          : (rawFocusedStyle.borderColor || '#FFFFFF'),
+        borderWidth: rawFocusedStyle.borderWidth === 0 ? 0 : Math.max(2, rawFocusedStyle.borderWidth || 0),
+        transform: undefined,
+      }
     : rawFocusedStyle;
 
   // Cast properties to any to support platform-specific TV props smoothly without type issues

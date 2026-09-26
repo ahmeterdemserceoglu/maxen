@@ -1,6 +1,7 @@
 import React, { Component, ErrorInfo, ReactNode } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { TVFocusable } from '@/components/TVFocusable';
 
 interface Props {
   children?: ReactNode;
@@ -38,9 +39,15 @@ export class ErrorBoundary extends Component<Props, State> {
           <Text style={styles.message}>
             Uygulamada beklenmeyen bir hata oluştu. Lütfen tekrar deneyin.
           </Text>
-          <TouchableOpacity style={styles.button} onPress={this.handleReset}>
+          <TVFocusable
+            hasTVPreferredFocus={Platform.isTV}
+            style={styles.button}
+            focusedStyle={styles.buttonFocused}
+            onPress={this.handleReset}
+            accessibilityLabel="Uygulamayı yeniden dene"
+          >
             <Text style={styles.buttonText}>Yenile</Text>
-          </TouchableOpacity>
+          </TVFocusable>
         </View>
       );
     }
@@ -75,6 +82,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 32,
     paddingVertical: 12,
     borderRadius: 8,
+  },
+  buttonFocused: {
+    borderColor: '#FFFFFF',
+    borderWidth: 3,
+    transform: [{ scale: 1.08 }],
   },
   buttonText: {
     color: '#fff',

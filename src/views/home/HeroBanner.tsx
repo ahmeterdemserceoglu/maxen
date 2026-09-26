@@ -87,7 +87,7 @@ export const HeroBanner: React.FC<HeroBannerProps> = React.memo(({
   const bannerHeight = isDesktopWeb
     ? Math.min(height * 0.85, 780)
     : isTV
-    ? height * 0.72
+    ? Math.max(340, Math.round(height * 0.68))
     : Math.round(height * 0.54);
 
   return (
@@ -223,10 +223,10 @@ export const HeroBanner: React.FC<HeroBannerProps> = React.memo(({
             maxWidth: 620,
           },
           isTV && {
-            bottom: 34,
+            bottom: 24,
             left: 36,
             paddingHorizontal: 0,
-            maxWidth: 580,
+            maxWidth: 680,
           },
         ]}
       >

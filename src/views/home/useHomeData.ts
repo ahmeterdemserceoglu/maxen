@@ -12,6 +12,7 @@ import {
   fetchSmartRecommendations,
 } from '@/services/recommendation/smartTasteEngine';
 import { extractCleanTmdbId } from '@/types/profileMedia';
+import { COMPLETION_THRESHOLD } from '@/utils/playerReliability';
 import { NormalizedMediaItem, normalizeTmdbItem } from '@/types/media';
 
 export type { NormalizedMediaItem };
@@ -92,16 +93,7 @@ export function useHomeData(activeTab: string, profileId: string) {
 
     const unsubCw = subscribeToContinueWatching(user.uid, profileId, (cw: any[]) => {
       const uniqueMap = new Map<string, any>();
-      cw.sort((a: any, b: any) => {
-        const timeDiff = (b.savedAt || 0) - (a.savedAt || 0);
-        if (Math.abs(timeDiff) > 10000) return timeDiff;
-        const bSeason = Number(b.season_number || b.SeasonNumber || 1);
-        const aSeason = Number(a.season_number || a.SeasonNumber || 1);
-        if (bSeason !== aSeason) return bSeason - aSeason;
-        const bEp = Number(b.episode_number || b.EpisodeNumber || 1);
-        const aEp = Number(a.episode_number || a.EpisodeNumber || 1);
-        return bEp - aEp;
-      }).forEach((rawItem: any) => {
+      cw.sort((a: any, b: any) => (b.savedAt || 0) - (a.savedAt || 0)).forEach((rawItem: any) => {
         const isTv =
           rawItem.type === 'tv' ||
           rawItem.Type === 'Series' ||
@@ -122,7 +114,7 @@ export function useHomeData(activeTab: string, profileId: string) {
         }
       });
       const unfinished = Array.from(uniqueMap.values()).filter(
-        (item: any) => item.progress && item.progress < 0.95
+        (item: any) => Number(item.progress ?? 0) < COMPLETION_THRESHOLD
       );
       setData((prev) => ({ ...prev, continueWatching: unfinished }));
     });
@@ -166,20 +158,11 @@ export function useHomeData(activeTab: string, profileId: string) {
             getWatchLater(user.uid, profileId),
           ]);
 
-          const unfinished = cw.filter((item: any) => item.progress && item.progress < 0.95);
+          const unfinished = cw.filter((item: any) => Number(item.progress ?? 0) < 0.995);
           const uniqueMap = new Map<string, any>();
 
           unfinished
-            .sort((a: any, b: any) => {
-              const timeDiff = (b.savedAt || 0) - (a.savedAt || 0);
-              if (Math.abs(timeDiff) > 10000) return timeDiff;
-              const bSeason = Number(b.season_number || b.SeasonNumber || 1);
-              const aSeason = Number(a.season_number || a.SeasonNumber || 1);
-              if (bSeason !== aSeason) return bSeason - aSeason;
-              const bEp = Number(b.episode_number || b.EpisodeNumber || 1);
-              const aEp = Number(a.episode_number || a.EpisodeNumber || 1);
-              return bEp - aEp;
-            })
+            .sort((a: any, b: any) => (b.savedAt || 0) - (a.savedAt || 0))
             .forEach((rawItem: any) => {
               const isTv =
                 rawItem.type === 'tv' ||

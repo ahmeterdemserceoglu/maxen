@@ -1,4 +1,4 @@
-﻿export default async function handler(req, res) {
+export default async function handler(req, res) {
   // CORS Headers
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
@@ -10,11 +10,10 @@
   }
 
   try {
-    const url = new URL(req.url, http://);
-    const tmdbId = url.searchParams.get('tmdbId');
-    const type = url.searchParams.get('type') || 'movie';
-    const season = url.searchParams.get('season');
-    const episode = url.searchParams.get('episode');
+    const tmdbId = String(req.query?.tmdbId || '').trim();
+    const type = req.query?.type === 'tv' ? 'tv' : 'movie';
+    const season = req.query?.season ? String(req.query.season) : null;
+    const episode = req.query?.episode ? String(req.query.episode) : null;
 
     if (!tmdbId) {
       return res.status(400).json({ error: 'Missing tmdbId query parameter.' });
@@ -26,7 +25,7 @@
     }
 
     // 1. TMDB'den External IDs ve Credits çek
-    const extUrl = https://api.themoviedb.org/3///external_ids?api_key=;
+    const extUrl = `https://api.themoviedb.org/3/${type}/${encodeURIComponent(tmdbId)}/external_ids?api_key=${encodeURIComponent(TMDB_API_KEY)}`;
     const extRes = await fetch(extUrl);
     let imdbId = null;
     if (extRes.ok) {
@@ -35,9 +34,9 @@
     }
 
     // Oyuncu kadrosu (credits)
-    let creditsUrl = https://api.themoviedb.org/3///credits?api_key=&language=tr-TR;
+    let creditsUrl = `https://api.themoviedb.org/3/${type}/${encodeURIComponent(tmdbId)}/credits?api_key=${encodeURIComponent(TMDB_API_KEY)}&language=tr-TR`;
     if (type === 'tv' && season && episode) {
-      creditsUrl = https://api.themoviedb.org/3/tv//season//episode//credits?api_key=&language=tr-TR;
+      creditsUrl = `https://api.themoviedb.org/3/tv/${encodeURIComponent(tmdbId)}/season/${encodeURIComponent(season)}/episode/${encodeURIComponent(episode)}/credits?api_key=${encodeURIComponent(TMDB_API_KEY)}&language=tr-TR`;
     }
     const creditsRes = await fetch(creditsUrl);
     let allCast = [];
@@ -59,8 +58,8 @@
     let songsData = [];
     try {
       const whatSongUrl = type === 'tv' && season && episode
-        ? https://api.what-song.com/v2/shows//episodes//
-        : https://api.what-song.com/v2/movies/;
+        ? `https://api.what-song.com/v2/shows/${encodeURIComponent(imdbId)}/episodes/${encodeURIComponent(season)}/${encodeURIComponent(episode)}`
+        : `https://api.what-song.com/v2/movies/${encodeURIComponent(imdbId)}`;
       
       const wsRes = await fetch(whatSongUrl, {
         headers: { 'Accept': 'application/json', 'User-Agent': 'Mozilla/5.0' },
@@ -99,7 +98,7 @@
       const sceneActors = matchedActors.length > 0 ? matchedActors.slice(0, 4) : allCast.slice(0, 3);
 
       return {
-        id: scene-,
+        id: `scene-${idx}`,
         startSeconds: startTime,
         endSeconds: endTime,
         description: sceneDesc,

@@ -583,7 +583,7 @@ export const MediaRow = React.memo<MediaRowProps>(
           {section.title}
         </ThemedText>
 
-        <View style={{ position: 'relative' }}>
+        <View style={[styles.rowListViewport, isTV && styles.rowListViewportTV]}>
           {/* Netflix-Style Desktop Left Chevron Button */}
           {isDesktopWeb && isHovered && scrollOffset > 10 && (
             <button
@@ -740,6 +740,14 @@ const styles = StyleSheet.create({
     fontSize: isTV ? 16 : 19,
     color: '#FFFFFF',
     letterSpacing: isTV ? 0.2 : 0,
+  },
+  rowListViewport: {
+    position: 'relative',
+  },
+  rowListViewportTV: {
+    height: 174,
+    minHeight: 174,
+    overflow: 'visible',
   },
   listContent: {
     paddingHorizontal: isTV ? 20 : 12,

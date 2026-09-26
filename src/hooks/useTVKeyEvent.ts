@@ -21,6 +21,8 @@ export interface TVKeyEventPayload {
   eventType: TVKeyEventType;
   keyCode: number;
   action: number;
+  repeatCount?: number;
+  seekControlFocused?: boolean;
 }
 
 /**

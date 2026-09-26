@@ -2,7 +2,8 @@
   "expo": {
     "name": "maxen",
     "slug": "maxen",
-    "version": "10.6.5",
+    "version": "10.6.6",
+    "icon": "./assets/images/maxen.png",
     "orientation": "default",
     "scheme": "maxen",
     "userInterfaceStyle": "automatic",
@@ -21,9 +22,9 @@
       }
     },
     "splash": {
-      "image": "./assets/images/transparent.png",
+      "image": "./assets/images/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#000000"
+      "backgroundColor": "#FAFAF9"
     },
     "web": {
       "bundler": "metro",
@@ -32,7 +33,12 @@
     },
     "android": {
       "package": "com.maxen.app",
-      "versionCode": 23,
+      "versionCode": 24,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/android-icon-foreground.png",
+        "backgroundColor": "#FAFAF9",
+        "monochromeImage": "./assets/images/android-icon-monochrome.png"
+      },
       "isTV": true,
       "usesCleartextTraffic": true,
       "predictiveBackGestureEnabled": false,

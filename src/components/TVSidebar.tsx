@@ -55,6 +55,8 @@ export function TVSidebar({
   const setShowJoinPartyModal = useUiStore((state) => state.setShowJoinPartyModal);
   const pendingFriendRequestsCount = useUiStore((state) => state.pendingFriendRequestsCount);
   const setSidebarActiveNodeId = useUiStore((state) => state.setSidebarActiveNodeId);
+  const heroPlayBtnNodeId = useUiStore((state) => state.heroPlayBtnNodeId);
+  const firstRowFirstCardNodeId = useUiStore((state) => state.firstRowFirstCardNodeId);
 
   const [isExpanded, setIsExpanded] = useState(false);
   const [focusedKey, setFocusedKey] = useState<string | null>(null);
@@ -90,6 +92,24 @@ export function TVSidebar({
     }
     setFocusedKey(key);
     setIsExpanded(true);
+  }, []);
+
+  const tabSelectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleNavItemFocus = useCallback((tab: TVTabConfig) => {
+    handleItemFocus(tab.key);
+    // TV navigation is selection-on-focus with a 200ms settling debounce so fast vertical scrolling
+    // does not thrash intermediate screens in the background.
+    if (tab.key !== activeTab) {
+      if (tabSelectTimerRef.current) clearTimeout(tabSelectTimerRef.current);
+      tabSelectTimerRef.current = setTimeout(() => {
+        onTabSelect(tab.key);
+      }, 200);
+    }
+  }, [activeTab, handleItemFocus, onTabSelect]);
+
+  useEffect(() => () => {
+    if (tabSelectTimerRef.current) clearTimeout(tabSelectTimerRef.current);
   }, []);
 
   const handleItemBlur = useCallback((_key: string) => {
@@ -168,6 +188,7 @@ export function TVSidebar({
 
   const topInset = Math.max(insets.top, 24);
   const bottomInset = Math.max(insets.bottom, 20);
+  const contentNodeId = heroPlayBtnNodeId || firstRowFirstCardNodeId || undefined;
 
   return (
     <TVFocusGroup
@@ -254,6 +275,7 @@ export function TVSidebar({
               }
             }}
             nextFocusDown={getTVNodeHandle(tabRefs.current[TV_NAV_ITEMS[0].key])}
+            nextFocusRight={contentNodeId}
             style={styles.profileButton}
             focusedStyle={styles.profileButtonFocused}
             accessibilityLabel={`Profil: ${activeProfile.name}`}
@@ -330,11 +352,12 @@ export function TVSidebar({
               ref={(el: any) => {
                 tabRefs.current[tab.key] = el;
               }}
-              onFocus={() => handleItemFocus(tab.key)}
+              onFocus={() => handleNavItemFocus(tab)}
               onBlur={() => handleItemBlur(tab.key)}
               onPress={() => onTabSelect(tab.key)}
               nextFocusUp={previousNode}
               nextFocusDown={nextNode}
+              nextFocusRight={contentNodeId}
               style={[
                 styles.navItem,
                 isActive && !isItemFocused && isExpanded && styles.navItemActive,
@@ -414,6 +437,7 @@ export function TVSidebar({
           onBlur={() => handleItemBlur('watchparty')}
           onPress={() => setShowJoinPartyModal(true)}
           nextFocusUp={getTVNodeHandle(tabRefs.current[TV_NAV_ITEMS[TV_NAV_ITEMS.length - 1].key])}
+          nextFocusRight={contentNodeId}
           style={styles.navItem}
           focusedStyle={styles.navItemFocused}
           accessibilityLabel="Birlikte İzle"

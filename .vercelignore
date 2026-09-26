@@ -1,11 +1,67 @@
-.vercel
-.expo
-.next
-android
-ios
-node_modules
-dist
-build
-.git
+# Bağımlılıklar ve Çıktılar
+node_modules/
+dist/
+.expo/
+.vercel/
+
+# Mobil ve Yerel Android / iOS Dosyaları (2.2+ GB)
+android/
+ios/
 *.apk
 *.aab
+eas.json
+
+# Güvenlik ve Sertifikalar
+upload_certificate.pem
+*.pem
+*.key
+*.keystore
+*.jks
+*.p12
+*.p14
+.env*
+
+# Büyük Yerel Araçlar ve Testler (5+ GB)
+.local-tools/
+artifacts/
+coverage/
+tests/
+__tests__/
+jest.config.js
+
+# Cloudflare Worker Dosyaları (Vercel ile ilgisiz)
+workers/
+cloudflare-worker.js
+wrangler.toml
+
+# Yerel Sunucu ve Yardımcı Scriptler
+server/
+add-trailer.mjs
+fragman-ekle.bat
+*.bat
+*.cmd
+
+# Firebase Kural Dosyaları
+firestore.rules
+firestore.indexes.json
+
+# Dokümanlar
+docs/
+README.md
+LICENSE
+
+# AI Agent Klasörleri
+.agent/
+.agents/
+
+# Editör, Sistem ve Log Dosyaları
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*

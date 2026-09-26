@@ -68,7 +68,14 @@ class MainActivity : ReactActivity() {
    * to ensure media controls (Play/Pause, Rewind, Fast Forward, Channel Up/Down) work seamlessly on Android TV.
    */
   override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
-    if (event.action == android.view.KeyEvent.ACTION_DOWN && event.repeatCount == 0) {
+    val isSeekKey = event.keyCode == android.view.KeyEvent.KEYCODE_DPAD_LEFT ||
+      event.keyCode == android.view.KeyEvent.KEYCODE_DPAD_RIGHT
+    val seekControlFocused = currentFocus?.contentDescription?.toString() == "player-progress"
+    val shouldEmit = (event.action == android.view.KeyEvent.ACTION_DOWN && event.repeatCount == 0) ||
+      (isSeekKey && seekControlFocused &&
+        (event.action == android.view.KeyEvent.ACTION_DOWN || event.action == android.view.KeyEvent.ACTION_UP))
+
+    if (shouldEmit) {
       val eventType = when (event.keyCode) {
         android.view.KeyEvent.KEYCODE_DPAD_UP -> "up"
         android.view.KeyEvent.KEYCODE_DPAD_DOWN -> "down"
@@ -95,9 +102,20 @@ class MainActivity : ReactActivity() {
       }
 
       if (eventType != null) {
-        emitTvKeyEvent(eventType, event.keyCode, event.action)
+        emitTvKeyEvent(eventType, event.keyCode, event.action, event.repeatCount, seekControlFocused)
       }
     }
+
+    // Timeline owns left/right while focused. Consuming the native event prevents
+    // Android focus navigation and the "stuck D-pad" behaviour of virtual remotes.
+    if (isSeekKey && seekControlFocused) return true
+
+    // Center on the timeline is a direct play/pause command. Do not let Android
+    // move focus to, or press, a separate playback button as well.
+    val isSelectKey = event.keyCode == android.view.KeyEvent.KEYCODE_DPAD_CENTER ||
+      event.keyCode == android.view.KeyEvent.KEYCODE_ENTER ||
+      event.keyCode == android.view.KeyEvent.KEYCODE_NUMPAD_ENTER
+    if (isSelectKey && seekControlFocused) return true
 
     val isMediaShortcut = when (event.keyCode) {
       android.view.KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE,
@@ -120,7 +138,7 @@ class MainActivity : ReactActivity() {
     return super.dispatchKeyEvent(event)
   }
 
-  private fun emitTvKeyEvent(eventType: String, keyCode: Int, action: Int) {
+  private fun emitTvKeyEvent(eventType: String, keyCode: Int, action: Int, repeatCount: Int, seekControlFocused: Boolean) {
     try {
       val reactContext = try {
         (application as? com.facebook.react.ReactApplication)?.reactHost?.currentReactContext
@@ -134,6 +152,8 @@ class MainActivity : ReactActivity() {
           putString("eventType", eventType)
           putInt("keyCode", keyCode)
           putInt("action", action)
+          putInt("repeatCount", repeatCount)
+          putBoolean("seekControlFocused", seekControlFocused)
         }
         reactContext
           .getJSModule(com.facebook.react.modules.core.DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)

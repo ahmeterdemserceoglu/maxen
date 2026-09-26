@@ -9,6 +9,11 @@ export interface ResolverParams {
   cleanBaseUrl?: string;
   timeoutMs?: number;
   audioLang?: string;
+  mediaKey?: string;
+}
+
+function resolverMediaKey(params: Pick<ResolverParams, 'tmdbId' | 'isMovie' | 'seasonNum' | 'episodeNum' | 'mediaKey'>): string {
+  return params.mediaKey || `${params.isMovie ? 'movie' : 'tv'}_${params.tmdbId}_${params.seasonNum}_${params.episodeNum}`;
 }
 
 export interface ResolvedStreamResult {
@@ -313,12 +318,16 @@ export async function resolveParallelDirectStreamResult({
   }
 
   // Ana Backend API (Node.js / Vercel Serverless - CORS'suz sunucu taraflı çözümleme)
-  parallelTasks.push(fetchBackendEndpoint(mainBackendUrl, 'Maxen Primary Backend', timeoutMs));
+  const requireDirect = (result: ResolvedStreamResult) => {
+    if (result.isEmbed || !isDirectStream(result.streamUrl)) {
+      throw new Error('Backend did not resolve a direct video stream');
+    }
+    return result;
+  };
+  parallelTasks.push(fetchBackendEndpoint(mainBackendUrl + '&direct=1', 'Maxen Primary Backend', timeoutMs).then(requireDirect));
 
   // Cloudflare Worker API (Tarayıcı dışında yedek)
-  if (!isBrowser) {
-    parallelTasks.push(fetchBackendEndpoint(workerBackendUrl, 'Maxen Cloudflare Worker', timeoutMs));
-  }
+  parallelTasks.push(fetchBackendEndpoint(workerBackendUrl, 'Maxen Cloudflare Worker', timeoutMs).then(requireDirect));
 
   try {
     const winner = await promiseAny(parallelTasks);
@@ -354,6 +363,7 @@ export async function fetchBackendStream({
   cleanBaseUrl,
   timeoutMs = 3500,
   audioLang,
+  mediaKey,
 }: ResolverParams): Promise<boolean> {
   const type = isMovie ? 'movie' : 'tv';
   const effectiveBaseUrl = (cleanBaseUrl || 'https://maxen.sbs').replace(/\/api\/?$/, '').replace(/\/$/, '');
@@ -372,6 +382,7 @@ export async function fetchBackendStream({
       provider: winner.provider,
       expiresAt: Date.now() + 2 * 60 * 60 * 1000,
       headers: winner.headers || {},
+      mediaKey: resolverMediaKey({ tmdbId, isMovie, seasonNum, episodeNum, mediaKey }),
     });
     return true;
   } catch {
@@ -386,6 +397,7 @@ export async function fetchVixSrcDirectClientSide({
   episodeNum,
   timeoutMs = 3500,
   audioLang,
+  mediaKey,
 }: Omit<ResolverParams, 'cleanBaseUrl'>): Promise<boolean> {
   try {
     const result = await resolveVixSrcDirect({ tmdbId, isMovie, seasonNum, episodeNum, timeoutMs, audioLang });
@@ -394,6 +406,7 @@ export async function fetchVixSrcDirectClientSide({
       provider: result.provider,
       expiresAt: Date.now() + 2 * 60 * 60 * 1000,
       headers: result.headers || {},
+      mediaKey: resolverMediaKey({ tmdbId, isMovie, seasonNum, episodeNum, mediaKey }),
     });
     return true;
   } catch {
@@ -407,6 +420,7 @@ export async function runDirectHttpResolver({
   seasonNum,
   episodeNum,
   timeoutMs = 3500,
+  mediaKey,
 }: Omit<ResolverParams, 'cleanBaseUrl'>): Promise<boolean> {
   // Web tarayıcısında üçüncü taraf sitelerin kazınması CORS tarafından engellenir
   const isBrowser = Platform.OS === 'web' && typeof window !== 'undefined' && !process.env.JEST_WORKER_ID;
@@ -438,6 +452,7 @@ export async function runDirectHttpResolver({
       provider: winner.provider,
       expiresAt: Date.now() + 2 * 60 * 60 * 1000,
       headers: winner.headers || {},
+      mediaKey: resolverMediaKey({ tmdbId, isMovie, seasonNum, episodeNum, mediaKey }),
     });
     return true;
   } catch {

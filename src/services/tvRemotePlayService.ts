@@ -11,10 +11,13 @@ import {
 } from 'firebase/firestore';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { db } from '@/config/firebase';
+import { isFreshTvRemoteAction } from '@/utils/tvRemoteAction';
 
 export const TV_DEVICE_STORAGE_KEY = 'maxen_tv_device_id';
 export const TV_ONLINE_WINDOW_MS = 5 * 60 * 1000; // 5 dakika tolerans
 export const TV_HEARTBEAT_MS = 20 * 1000;
+const lastRemoteActionIdByDevice = new Map<string, string>();
+const remoteWriteQueueByDevice = new Map<string, Promise<void>>();
 
 export interface TvPlayMedia {
   id: string;
@@ -312,7 +315,8 @@ export async function sendTvRemoteAction(
   type: TvRemoteAction['type'],
   payload?: any
 ): Promise<{ success: boolean; error?: string }> {
-  try {
+  const previousWrite = remoteWriteQueueByDevice.get(deviceId) || Promise.resolve();
+  const write = previousWrite.catch(() => undefined).then(async () => {
     const action: TvRemoteAction = {
       actionId: `act_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`,
       requestedAt: Date.now(),
@@ -324,9 +328,18 @@ export async function sendTvRemoteAction(
       { remoteAction: action },
       { merge: true }
     );
+  });
+  remoteWriteQueueByDevice.set(deviceId, write);
+
+  try {
+    await write;
     return { success: true };
   } catch (e: any) {
     return { success: false, error: e?.message || 'Kumanda komutu gönderilemedi.' };
+  } finally {
+    if (remoteWriteQueueByDevice.get(deviceId) === write) {
+      remoteWriteQueueByDevice.delete(deviceId);
+    }
   }
 }
 
@@ -334,16 +347,16 @@ export function subscribeToTvRemoteActions(
   deviceId: string,
   onAction: (action: TvRemoteAction) => void
 ): () => void {
-  let lastActionId: string | null = null;
+  const subscribedAt = Date.now();
   return onSnapshot(
     doc(db, 'tv_devices', deviceId),
     (snap) => {
       if (!snap.exists()) return;
       const data = snap.data() as any;
       const action = data?.remoteAction as TvRemoteAction | undefined;
-      if (!action?.actionId || !action.type) return;
-      if (action.actionId === lastActionId) return;
-      lastActionId = action.actionId;
+      const lastActionId = lastRemoteActionIdByDevice.get(deviceId);
+      if (!isFreshTvRemoteAction(action, lastActionId, subscribedAt)) return;
+      lastRemoteActionIdByDevice.set(deviceId, action.actionId);
       onAction(action);
     },
     (err) => {
@@ -351,4 +364,3 @@ export function subscribeToTvRemoteActions(
     }
   );
 }
-

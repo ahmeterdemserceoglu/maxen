@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -19,6 +19,7 @@ export interface NextEpisodeCountdownOverlayProps {
   visible: boolean;
   nextMedia: any;
   countdownSeconds?: number;
+  totalCountdownSeconds?: number;
   onPlayNext: () => void;
   onDismiss: () => void;
 }
@@ -26,14 +27,15 @@ export interface NextEpisodeCountdownOverlayProps {
 export function NextEpisodeCountdownOverlay({
   visible,
   nextMedia,
-  countdownSeconds = 5,
+  countdownSeconds = 10,
+  totalCountdownSeconds = 10,
   onPlayNext,
   onDismiss,
 }: NextEpisodeCountdownOverlayProps) {
   const { width } = useWindowDimensions();
   const isDesktopOrTv = isTV || width > 768;
 
-  const [secondsRemaining, setSecondsRemaining] = useState(countdownSeconds);
+  const secondsRemaining = Math.max(0, Math.min(totalCountdownSeconds, countdownSeconds));
   const slideAnim = useRef(new Animated.Value(400)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const progressAnim = useRef(new Animated.Value(1)).current;
@@ -41,9 +43,6 @@ export function NextEpisodeCountdownOverlay({
   // Handle slide/fade in/out animations
   useEffect(() => {
     if (visible) {
-      setSecondsRemaining(countdownSeconds);
-      progressAnim.setValue(1);
-
       Animated.parallel([
         Animated.spring(slideAnim, {
           toValue: 0,
@@ -55,11 +54,6 @@ export function NextEpisodeCountdownOverlay({
           toValue: 1,
           duration: 250,
           useNativeDriver: true,
-        }),
-        Animated.timing(progressAnim, {
-          toValue: 0,
-          duration: countdownSeconds * 1000,
-          useNativeDriver: false,
         }),
       ]).start();
     } else {
@@ -76,27 +70,18 @@ export function NextEpisodeCountdownOverlay({
         }),
       ]).start();
     }
-  }, [visible, countdownSeconds, slideAnim, fadeAnim, progressAnim]);
+  }, [visible, slideAnim, fadeAnim]);
 
-  // Handle countdown interval
+  // Keep the visual countdown tied to the player's actual remaining time.
   useEffect(() => {
-    if (!visible || !nextMedia) return;
-
-    const interval = setInterval(() => {
-      setSecondsRemaining((prev) => {
-        if (prev <= 1) {
-          clearInterval(interval);
-          onPlayNext();
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-
-    return () => {
-      clearInterval(interval);
-    };
-  }, [visible, nextMedia, onPlayNext]);
+    if (!visible) return;
+    Animated.timing(progressAnim, {
+      toValue: totalCountdownSeconds > 0 ? secondsRemaining / totalCountdownSeconds : 0,
+      duration: 180,
+      useNativeDriver: false,
+      isInteraction: false,
+    }).start();
+  }, [progressAnim, secondsRemaining, totalCountdownSeconds, visible]);
 
   if (!visible || !nextMedia) return null;
 

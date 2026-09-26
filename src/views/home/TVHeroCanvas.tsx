@@ -18,6 +18,7 @@ export interface TVHeroCanvasProps {
   onPressInfo: (media: any) => void;
   onFocus?: () => void;
   playBtnRef?: React.RefObject<any>;
+  canvasHeight?: number;
 }
 
 export const TVHeroCanvas: React.FC<TVHeroCanvasProps> = React.memo(({
@@ -26,6 +27,7 @@ export const TVHeroCanvas: React.FC<TVHeroCanvasProps> = React.memo(({
   onPressInfo,
   onFocus,
   playBtnRef,
+  canvasHeight: customCanvasHeight,
 }) => {
   const { width, height } = useWindowDimensions();
   const infoBtnRef = useRef<any>(null);
@@ -86,20 +88,21 @@ export const TVHeroCanvas: React.FC<TVHeroCanvasProps> = React.memo(({
     ? (Array.isArray(media.genres) ? media.genres.slice(0, 3).join(' • ') : String(media.genres))
     : '';
 
-  // Prime Video fills ~56% of screen height
-  const canvasHeight = Math.round(height * 0.56);
-  const contentMaxWidth = Math.min(Math.round(width * 0.46), 520);
+  // Compact scaling for standard 1080p Android TV (@320dpi: 540dp height, 960dp width)
+  const isCompactTV = height <= 640;
+  const canvasHeight = customCanvasHeight ?? (isCompactTV ? 280 : Math.round(height * 0.54));
+  const contentMaxWidth = Math.min(Math.round(width * 0.65), 700);
 
   return (
     <View style={[styles.canvasContainer, { height: canvasHeight }]}>
 
-      {/* Backdrop */}
+      {/* Backdrop Image */}
       {backdropUri ? (
         <Image
           source={{ uri: backdropUri }}
           style={styles.backdropImage}
           contentFit="cover"
-          contentPosition="right center"
+          contentPosition="center"
           transition={200}
           cachePolicy="memory-disk"
         />
@@ -107,16 +110,16 @@ export const TVHeroCanvas: React.FC<TVHeroCanvasProps> = React.memo(({
         <View style={styles.backdropPlaceholder} />
       )}
 
-      {/* Left gradient — content lives here */}
+      {/* Left gradient — ensures readable text against bright backgrounds */}
       <LinearGradient
         colors={[
-          'rgba(11,11,15,0.98)',
-          'rgba(11,11,15,0.88)',
-          'rgba(11,11,15,0.55)',
-          'rgba(11,11,15,0.18)',
+          'rgba(11,11,15,0.94)',
+          'rgba(11,11,15,0.76)',
+          'rgba(11,11,15,0.38)',
+          'rgba(11,11,15,0.08)',
           'transparent',
         ]}
-        locations={[0, 0.22, 0.45, 0.68, 1]}
+        locations={[0, 0.25, 0.52, 0.76, 1]}
         start={{ x: 0, y: 0.5 }}
         end={{ x: 1, y: 0.5 }}
         style={styles.leftGradient}
@@ -126,15 +129,15 @@ export const TVHeroCanvas: React.FC<TVHeroCanvasProps> = React.memo(({
       {/* Top fade */}
       <LinearGradient
         colors={['rgba(11,11,15,0.65)', 'transparent']}
-        style={styles.topGradient}
+        style={[styles.topGradient, { height: isCompactTV ? 50 : 90 }]}
         pointerEvents="none"
       />
 
-      {/* Bottom dissolve */}
+      {/* Bottom dissolve into catalog */}
       <LinearGradient
-        colors={['transparent', 'rgba(11,11,15,0.5)', 'rgba(11,11,15,0.88)', '#0B0B0F']}
-        locations={[0, 0.38, 0.7, 1]}
-        style={styles.bottomGradient}
+        colors={['transparent', 'rgba(11,11,15,0.35)', 'rgba(11,11,15,0.85)', '#0B0B0F']}
+        locations={[0, 0.35, 0.72, 1]}
+        style={[styles.bottomGradient, { height: Math.round(canvasHeight * 0.32) }]}
         pointerEvents="none"
       />
 
@@ -146,11 +149,11 @@ export const TVHeroCanvas: React.FC<TVHeroCanvasProps> = React.memo(({
         </View>
       ) : null}
 
-      {/* Hero content — bottom left */}
-      <View style={[styles.content, { maxWidth: contentMaxWidth }]}>
+      {/* Hero content — bottom left with safe spacing */}
+      <View style={[styles.content, { maxWidth: contentMaxWidth, bottom: isCompactTV ? 16 : 28 }]}>
 
         {/* Brand + type row */}
-        <View style={styles.topLabelRow}>
+        <View style={[styles.topLabelRow, isCompactTV && { marginBottom: 4 }]}>
           <View style={styles.maxenBadge}>
             <ThemedText style={styles.maxenBadgeText}>MAXEN</ThemedText>
           </View>
@@ -164,13 +167,25 @@ export const TVHeroCanvas: React.FC<TVHeroCanvasProps> = React.memo(({
           <ThemedText style={styles.newSeasonLabel}>{newSeasonLabel}</ThemedText>
         ) : null}
 
-        {/* Main title — large, 2 lines */}
-        <ThemedText numberOfLines={2} adjustsFontSizeToFit style={styles.title}>
+        {/* Main title — large, 2 lines max with auto-scaling to avoid cut-off */}
+        <ThemedText
+          numberOfLines={2}
+          adjustsFontSizeToFit
+          minimumFontScale={0.8}
+          style={[
+            styles.title,
+            isCompactTV && {
+              fontSize: 32,
+              lineHeight: 38,
+              marginBottom: 6,
+            },
+          ]}
+        >
           {title}
         </ThemedText>
 
         {/* Metadata */}
-        <View style={styles.metaRow}>
+        <View style={[styles.metaRow, isCompactTV && { marginBottom: 4 }]}>
           {rating ? (
             <View style={styles.imdbBadge}>
               <ThemedText style={styles.imdbLabel}>IMDb</ThemedText>
@@ -191,18 +206,30 @@ export const TVHeroCanvas: React.FC<TVHeroCanvasProps> = React.memo(({
 
         {/* Genres */}
         {genresLine ? (
-          <ThemedText numberOfLines={1} style={styles.genres}>{genresLine}</ThemedText>
+          <ThemedText numberOfLines={1} style={[styles.genres, isCompactTV && { marginBottom: 4 }]}>
+            {genresLine}
+          </ThemedText>
         ) : null}
 
-        {/* Overview — 2 lines */}
+        {/* Overview — 2 lines cleanly constrained */}
         {media.overview ? (
-          <ThemedText numberOfLines={2} style={styles.overview}>
+          <ThemedText
+            numberOfLines={2}
+            style={[
+              styles.overview,
+              isCompactTV && {
+                fontSize: 12,
+                lineHeight: 17,
+                marginBottom: 10,
+              },
+            ]}
+          >
             {media.overview}
           </ThemedText>
         ) : null}
 
         {/* Action buttons */}
-        <View style={styles.buttonRow}>
+        <View style={[styles.buttonRow, isCompactTV && { gap: 10 }]}>
           <TVFocusable
             ref={playBtnRef}
             hasTVPreferredFocus
@@ -211,11 +238,19 @@ export const TVHeroCanvas: React.FC<TVHeroCanvasProps> = React.memo(({
             nextFocusLeft={sidebarActiveNodeId || undefined}
             nextFocusDown={firstRowFirstCardNodeId || undefined}
             nextFocusRight={getTVNodeHandle(infoBtnRef)}
-            style={styles.playBtn}
+            style={[
+              styles.playBtn,
+              isCompactTV && {
+                paddingHorizontal: 22,
+                paddingVertical: 9,
+              },
+            ]}
             focusedStyle={styles.playBtnFocused}
           >
-            <Ionicons name="play" size={18} color="#000000" />
-            <ThemedText style={styles.playBtnText}>{playLabel}</ThemedText>
+            <Ionicons name="play" size={isCompactTV ? 16 : 18} color="#000000" />
+            <ThemedText style={[styles.playBtnText, isCompactTV && { fontSize: 14 }]}>
+              {playLabel}
+            </ThemedText>
           </TVFocusable>
 
           <TVFocusable
@@ -224,11 +259,19 @@ export const TVHeroCanvas: React.FC<TVHeroCanvasProps> = React.memo(({
             onPress={() => onPressInfo(media)}
             nextFocusLeft={getTVNodeHandle(playBtnRef)}
             nextFocusDown={firstRowFirstCardNodeId || undefined}
-            style={styles.infoBtn}
+            style={[
+              styles.infoBtn,
+              isCompactTV && {
+                paddingHorizontal: 18,
+                paddingVertical: 9,
+              },
+            ]}
             focusedStyle={styles.infoBtnFocused}
           >
-            <Ionicons name="information-circle-outline" size={18} color="#FFFFFF" />
-            <ThemedText style={styles.infoBtnText}>Detaylar</ThemedText>
+            <Ionicons name="information-circle-outline" size={isCompactTV ? 16 : 18} color="#FFFFFF" />
+            <ThemedText style={[styles.infoBtnText, isCompactTV && { fontSize: 13 }]}>
+              Detaylar
+            </ThemedText>
           </TVFocusable>
         </View>
       </View>
@@ -249,6 +292,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
+    backgroundColor: '#0B0B0F',
   },
   backdropPlaceholder: {
     position: 'absolute',
@@ -270,7 +314,7 @@ const styles = StyleSheet.create({
     top: 0,
     bottom: 0,
     left: 0,
-    width: '72%',
+    width: '68%',
   },
   bottomGradient: {
     position: 'absolute',
@@ -299,7 +343,7 @@ const styles = StyleSheet.create({
   },
   content: {
     position: 'absolute',
-    bottom: 32,
+    bottom: 28,
     left: 44,
     zIndex: 10,
   },
@@ -335,11 +379,11 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   title: {
-    fontSize: 40,
-    lineHeight: 46,
+    fontSize: 38,
+    lineHeight: 44,
     fontWeight: '900',
     color: '#FFFFFF',
-    marginBottom: 10,
+    marginBottom: 8,
     letterSpacing: -0.5,
     textShadowColor: 'rgba(0,0,0,0.55)',
     textShadowOffset: { width: 0, height: 1 },
@@ -399,8 +443,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 19,
     color: '#B0B0B0',
-    marginBottom: 16,
-    maxWidth: 460,
+    marginBottom: 14,
   },
   buttonRow: {
     flexDirection: 'row',

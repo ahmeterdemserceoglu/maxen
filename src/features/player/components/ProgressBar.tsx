@@ -1,7 +1,8 @@
-import React from 'react';
-import { View, Text, StyleSheet, ActivityIndicator, Platform } from 'react-native';
+import React, { useEffect, useRef } from 'react';
+import { View, Text, StyleSheet, ActivityIndicator, Platform, Animated, Easing } from 'react-native';
 import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
+import { TVFocusable } from '@/components/TVFocusable';
 
 const isTV = Platform.isTV;
 
@@ -14,6 +15,8 @@ interface ProgressBarProps {
   isSeeking?: boolean;
   seekPreviewTime?: number;
   previewThumbnail?: any;
+  onFocusChange?: (focused: boolean) => void;
+  hasTVPreferredFocus?: boolean;
 }
 
 export function ProgressBar({
@@ -25,9 +28,27 @@ export function ProgressBar({
   isSeeking,
   seekPreviewTime,
   previewThumbnail,
+  onFocusChange,
+  hasTVPreferredFocus = false,
 }: ProgressBarProps) {
   const displayTime = isSeeking && seekPreviewTime !== undefined ? seekPreviewTime : currentTime;
   const percent = duration > 0 ? Math.max(0, Math.min(100, (displayTime / duration) * 100)) : 0;
+  const animatedPercent = useRef(new Animated.Value(percent)).current;
+
+  useEffect(() => {
+    Animated.timing(animatedPercent, {
+      toValue: percent,
+      duration: isTV ? (isSeeking ? 80 : 180) : 0,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false,
+      isInteraction: false,
+    }).start();
+  }, [animatedPercent, isSeeking, percent]);
+
+  const animatedPosition = animatedPercent.interpolate({
+    inputRange: [0, 100],
+    outputRange: ['0%', '100%'],
+  });
 
   // Ekran kenarlarından taşmayı engelleyen dinamik yatay kaydırma
   const getBubbleOffset = (pct: number) => {
@@ -43,7 +64,7 @@ export function ProgressBar({
           <View style={styles.timeBadgeTV}>
             <Ionicons name="play" size={14} color="#E50914" style={{ marginRight: 6 }} />
             <Text style={styles.timeTxtTV}>
-              {formatTime(currentTime)} <Text style={styles.timeSeparatorTV}>/</Text> {formatTime(duration)}
+              {formatTime(displayTime)} <Text style={styles.timeSeparatorTV}>/</Text> {formatTime(duration)}
             </Text>
           </View>
         </View>
@@ -53,15 +74,23 @@ export function ProgressBar({
           <Text style={styles.timeTxt}>-{formatTime(Math.max(0, duration - currentTime))}</Text>
         </View>
       )}
-      <View style={styles.progressRow}>
+      <TVFocusable
+        style={styles.progressRow}
+        focusedStyle={isTV ? styles.progressRowFocused : undefined}
+        hasTVPreferredFocus={isTV && hasTVPreferredFocus}
+        onFocus={() => onFocusChange?.(true)}
+        onBlur={() => onFocusChange?.(false)}
+        accessibilityLabel={isTV ? 'player-progress' : 'Oynatma ilerleme çubuğu'}
+        accessibilityRole="adjustable"
+      >
         <View
           style={styles.progressTrackContainer}
           {...panHandlers}
           onLayout={onLayout}
         >
           <View style={[styles.progressTrack, isTV && styles.progressTrackTV]}>
-            <View style={[styles.progressFill, { width: `${percent}%` }]} />
-            <View style={[styles.progressDot, isTV && styles.progressDotTV, { left: `${percent}%` }]}>
+            <Animated.View style={[styles.progressFill, { width: animatedPosition }]} />
+            <Animated.View style={[styles.progressDot, isTV && styles.progressDotTV, { left: animatedPosition }]}>
               {isSeeking && (
                 <View
                   style={[
@@ -93,10 +122,10 @@ export function ProgressBar({
                   <View style={styles.bubbleArrow} />
                 </View>
               )}
-            </View>
+            </Animated.View>
           </View>
         </View>
-      </View>
+      </TVFocusable>
     </View>
   );
 }
@@ -110,6 +139,11 @@ const styles = StyleSheet.create({
   containerTV: {
     paddingHorizontal: 0,
     marginBottom: 16,
+  },
+  progressRowFocused: {
+    borderColor: 'transparent',
+    borderWidth: 0,
+    transform: [{ scale: 1 }],
   },
   timeRow: {
     flexDirection: 'row',

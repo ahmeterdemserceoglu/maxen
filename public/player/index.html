@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' https: data:; media-src * blob:; connect-src 'self' https: http://127.0.0.1:47831; style-src 'self' 'unsafe-inline'; script-src 'self'">
+  <title>Maxen Player</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header><strong>MAXEN</strong><span>Linux Player</span></header>
+  <main>
+    <section class="setup" id="setup">
+      <h1>Film veya dizi ara</h1>
+      <p>Adını yaz, sonucu seç ve oynat.</p>
+      <form id="searchForm"><input id="query" required autocomplete="off" placeholder="Örn. Inception, Breaking Bad"><button type="submit">Ara</button></form>
+      <div id="results"></div>
+      <div id="episodePicker" hidden><h2 id="selectedTitle"></h2><select id="season"></select><select id="episode"></select><button id="playEpisode">Bölümü oynat</button></div>
+      <div id="status"></div>
+    </section>
+    <section class="player" id="player" hidden>
+      <video id="video" controls autoplay playsinline></video>
+      <button id="back">← Aramaya dön</button>
+    </section>
+  </main>
+  <script src="hls.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

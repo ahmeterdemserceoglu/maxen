@@ -284,7 +284,13 @@ export async function updateLivePresence(
   try {
     const presenceRef = doc(db, 'presence', user.uid);
     const effectiveStatus = user.hidePresence && status !== 'offline' ? 'offline' : status;
-    const payload = createPresencePayload(user, effectiveStatus, media);
+    const rawPayload = createPresencePayload(user, effectiveStatus, media);
+    const payload = {
+      ...rawPayload,
+      media: rawPayload.media
+        ? Object.fromEntries(Object.entries(rawPayload.media).filter(([, value]) => value !== undefined))
+        : null,
+    };
 
     await setDoc(presenceRef, payload, { merge: true });
   } catch (error) {

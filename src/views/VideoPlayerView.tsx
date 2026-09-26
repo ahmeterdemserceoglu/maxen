@@ -1,4 +1,9 @@
-import { getTVPlaybackIntent } from '@/utils/tvPlaybackControls';
+import {
+  getPreferredPlayerFocusTarget,
+  getTVPlaybackIntent,
+  getTVSeekStepSeconds,
+  getVirtualRemotePlaybackIntent,
+} from '@/utils/tvPlaybackControls';
 import { TVTouchable } from '@/components/TVTouchable';
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import {
@@ -16,6 +21,7 @@ import {
   AppState,
   Animated,
   DeviceEventEmitter,
+  NativeModules,
 } from 'react-native';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { Ionicons } from '@expo/vector-icons';
@@ -28,6 +34,16 @@ import { API_BASE_URL } from '@/config/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { saveContinueWatching, getContinueWatchingItem } from '@/services/profileMediaService';
 import { extractCleanTmdbId } from '@/types/profileMedia';
+import { TvLeanbackService } from '@/services/tvLeanbackService';
+import { getNextEpisodeCountdownSeconds, withoutStaleEpisodePlayback } from '@/utils/episodePlayback';
+import {
+  COMPLETION_THRESHOLD,
+  createGenerationGuard,
+  GenerationGuard,
+  getAdjustedVolume,
+  getPlaybackMediaKey,
+  shouldRotateFailedStream,
+} from '@/utils/playerReliability';
 import { saveActivePlaybackSession } from '@/services/crossDeviceHandoffService';
 import { SubtitleOverlay } from '@/features/player/components/SubtitleOverlay';
 import { SubtitleAppearanceModal, SubtitleSettings, DEFAULT_SUBTITLE_SETTINGS } from '@/features/player/components/SubtitleAppearanceModal';
@@ -67,6 +83,7 @@ import {
   resolveParallelDirectStream,
   resolveParallelDirectStreamResult,
   resolveVixSrcDirect,
+  isDirectStream,
 } from '@/features/player/services/streamResolverService';
 import { fetchEpisodeIntro, getNextEpisodeMedia, IntroData } from '@/features/player/services/introService';
 import { resolveTurkishDubbedStream } from '@/features/player/services/turkishDubbingService';
@@ -168,6 +185,11 @@ export function VideoPlayerView({
   const [availableQualities, setAvailableQualities] = useState<string[]>([]);
   const masterStreamUrlRef = useRef<string | null>(null);
   const hlsQualityMapRef = useRef<Record<string, string>>({});
+  const qualityGenerationRef = useRef(0);
+  const replaceGenerationRef = useRef(0);
+  const playerReplaceQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const preferredFullStreamUrlRef = useRef<string | null>(null);
+  const failedStreamUrlsRef = useRef(new Set<string>());
   const [showAudioMenu, setShowAudioMenu] = useState(false);
   const [showEpisodesDrawer, setShowEpisodesDrawer] = useState(false);
   const [controlsVisible, setControlsVisible] = useState(true);
@@ -183,9 +205,12 @@ export function VideoPlayerView({
   isPlayingRef.current = isPlaying;
   const [resolving, setResolving] = useState(false);
   const [resolverUrl, setResolverUrl] = useState<string | null>(null);
-  const [nextEpisodeCountdown, setNextEpisodeCountdown] = useState<number | null>(null);
+  const [resolutionAttempt, setResolutionAttempt] = useState(0);
   const [nextMediaData, setNextMediaData] = useState<any | null>(null);
   const [isNextBannerDismissed, setIsNextBannerDismissed] = useState(false);
+  const isNextBannerDismissedRef = useRef(false);
+  isNextBannerDismissedRef.current = isNextBannerDismissed;
+  const playNextEpisodeRef = useRef<() => void>(() => {});
   const [introData, setIntroData] = useState<IntroData | null>(null);
   const [isScreenLocked, setIsScreenLocked] = useState(false);
 
@@ -214,6 +239,9 @@ export function VideoPlayerView({
   const [isSeeking, setIsSeeking] = useState(false);
   const [seekPreviewTime, setSeekPreviewTime] = useState<number | undefined>(undefined);
   const seekPreviewTimeRef = useRef<number | undefined>(undefined);
+  const tvSeekCommitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastTvSeekStepAtRef = useRef(0);
+  const timelineFocusedRef = useRef(false);
   const [previewThumbnail, setPreviewThumbnail] = useState<any>(null);
   const [sceneThumbnails, setSceneThumbnails] = useState<string[]>([]);
 
@@ -277,6 +305,9 @@ export function VideoPlayerView({
   const activeProviderIndexRef = useRef(0);
   const controlsTimerRef = useRef<any>(null);
   const hasStartedRef = useRef(false);
+  const playbackGenerationGuardRef = useRef<GenerationGuard>(createGenerationGuard());
+  const controlsVisibleRef = useRef(controlsVisible);
+  controlsVisibleRef.current = controlsVisible;
   const playSessionIdRef = useRef(Math.random().toString(36).substring(2, 15));
   const timeIntervalRef = useRef<any>(null);
   const subtitleTrackIntervalRef = useRef<any>(null);
@@ -301,6 +332,8 @@ export function VideoPlayerView({
 
   const isWatchPartyHost = watchPartyRoom ? watchPartyRoom.hostId === user?.uid : false;
   const isApplyingRemoteSyncRef = useRef(false);
+  const remoteSyncTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastPartyMediaRevisionRef = useRef(activeWatchParty?.mediaRevision || 0);
   const partyRef = useRef<{ code: string; user: any; profileName: string } | null>(null);
 
   useEffect(() => {
@@ -323,9 +356,10 @@ export function VideoPlayerView({
 
   useEffect(() => {
     return () => {
-      if (partyRef.current) {
+      if (partyRef.current && !bingeTransitioningRef.current) {
         leaveWatchPartyRoom(partyRef.current.code, partyRef.current.user, partyRef.current.profileName);
       }
+      if (remoteSyncTimeoutRef.current) clearTimeout(remoteSyncTimeoutRef.current);
     };
   }, []);
 
@@ -344,14 +378,35 @@ export function VideoPlayerView({
 
         setWatchPartyRoom(updatedRoom);
 
-        // Host değilsek host'un oynatma durumunu uygula
-        if (user?.uid !== updatedRoom.hostId && playerRef.current) {
+        // Host değilsek medya kimliği dahil host'un durumunu uygula.
+        if (user?.uid !== updatedRoom.hostId) {
           isApplyingRemoteSyncRef.current = true;
 
           const delta = Math.max(0, (Date.now() - updatedRoom.updatedAt) / 1000);
           const targetTime = updatedRoom.isPlaying
             ? updatedRoom.currentTime + delta
             : updatedRoom.currentTime;
+
+          const remoteMediaKey = getPlaybackMediaKey(updatedRoom.media || {});
+          const localMediaKey = getPlaybackMediaKey(media);
+          const remoteRevision = updatedRoom.mediaRevision || 0;
+          if (
+            remoteMediaKey !== localMediaKey &&
+            remoteRevision >= lastPartyMediaRevisionRef.current &&
+            onPlayNextMedia
+          ) {
+            lastPartyMediaRevisionRef.current = remoteRevision;
+            bingeTransitioningRef.current = true;
+            onPlayNextMedia({
+              ...updatedRoom.media,
+              season_number: updatedRoom.media?.seasonNumber || 1,
+              episode_number: updatedRoom.media?.episodeNumber || 1,
+              positionSeconds: targetTime,
+            });
+            return;
+          }
+
+          if (!playerRef.current) return;
 
           if (Math.abs(playerRef.current.currentTime - targetTime) > 1.8) {
             playerRef.current.currentTime = targetTime;
@@ -366,7 +421,8 @@ export function VideoPlayerView({
             setIsPlaying(false);
           }
 
-          setTimeout(() => {
+          if (remoteSyncTimeoutRef.current) clearTimeout(remoteSyncTimeoutRef.current);
+          remoteSyncTimeoutRef.current = setTimeout(() => {
             isApplyingRemoteSyncRef.current = false;
           }, 500);
         }
@@ -381,7 +437,7 @@ export function VideoPlayerView({
     return () => {
       unsubscribe();
     };
-  }, [activeWatchParty?.code, user?.uid]);
+  }, [activeWatchParty?.code, media, onPlayNextMedia, user?.uid]);
 
   const broadcastPartyState = useCallback(
     (playing: boolean, currentSec: number) => {
@@ -446,6 +502,8 @@ export function VideoPlayerView({
       media.show_title
     );
   const isMovie = !isTv;
+  const isMovieRef = useRef(isMovie);
+  isMovieRef.current = isMovie;
 
   const rawCandidate =
     media.tmdbId ??
@@ -565,6 +623,17 @@ export function VideoPlayerView({
     duration - currentTime <= 90 &&
     duration - currentTime > 0
   );
+  const nextEpisodeSecondsRemaining = getNextEpisodeCountdownSeconds(currentTime, duration, 10);
+  const showNextEpisodeCountdown = Boolean(
+    showNextEpisode &&
+    nextMediaData &&
+    nextEpisodeSecondsRemaining !== null
+  );
+  const preferredPlayerFocus = getPreferredPlayerFocusTarget({
+    countdownVisible: showNextEpisodeCountdown && !isNextBannerDismissed,
+    actionVisible: showSkipIntro || Boolean(showNextEpisode && (!nextMediaData || isNextBannerDismissed)),
+    controlsVisible,
+  });
 
   useEffect(() => {
     if (showNextEpisode && !isNextBannerDismissed && !isMovie && !nextMediaData) {
@@ -615,6 +684,27 @@ export function VideoPlayerView({
           durationSeconds: dur,
           savedAt: Date.now(),
         };
+        const watchNextId = `maxen_${isMovie ? 'movie' : 'tv'}_${tmdbId}`;
+        if (progressRatio >= COMPLETION_THRESHOLD) {
+          void TvLeanbackService.removeWatchNext(watchNextId);
+        } else {
+          const artwork = progressObj.backdropUrl || progressObj.posterUrl;
+          if (artwork) {
+            void TvLeanbackService.publishWatchNext({
+              id: watchNextId,
+              tmdbId,
+              title: isMovie ? progressObj.title : (progressObj.show_title || progressObj.title),
+              episodeTitle: isMovie ? undefined : progressObj.title,
+              overview: media.overview || media.Overview,
+              posterUrl: artwork,
+              type: isMovie ? 'movie' : 'tv',
+              seasonNumber: isMovie ? undefined : seasonNum,
+              episodeNumber: isMovie ? undefined : episodeNum,
+              playbackPositionSeconds: currentSec,
+              durationSeconds: dur,
+            });
+          }
+        }
         await saveContinueWatching(user.uid, profileId, progressObj, progressRatio, currentSec, dur);
         saveActivePlaybackSession(user.uid, profileId, progressObj, currentSec, dur).catch(() => { });
         broadcastPartyState(isPlaying, currentSec);
@@ -634,7 +724,9 @@ export function VideoPlayerView({
     }
   };
 
-  const handlePlayNextEpisode = async () => {
+  const handlePlayNextEpisode = useCallback(async () => {
+    if (bingeTransitioningRef.current) return;
+    if (watchPartyRoom && !isWatchPartyHost) return;
     if (sleepTimer === 'end_of_episode') {
       if (playerRef.current) {
         playerRef.current.pause();
@@ -647,12 +739,42 @@ export function VideoPlayerView({
     }
     if (onPlayNextMedia) {
       bingeTransitioningRef.current = true;
-      const nextMedia = await getNextEpisodeMedia(media);
+      const nextMedia = nextMediaData || await getNextEpisodeMedia(media);
       if (nextMedia) {
+        // Moving away from the current episode is an explicit completion event.
+        await saveProgressToDb(duration, duration).catch(() => {});
+        if (user) {
+          await saveContinueWatching(
+            user.uid,
+            profileId,
+            withoutStaleEpisodePlayback(nextMedia),
+            0,
+            0,
+            undefined,
+          ).catch(() => {});
+        }
+        if (watchPartyRoom?.code && isWatchPartyHost) {
+          await syncWatchPartyPlayback(watchPartyRoom.code, true, 0, nextMedia);
+        }
         onPlayNextMedia(nextMedia);
+      } else {
+        bingeTransitioningRef.current = false;
+        setSubtitleToast('Sonraki bölüm doğrulanamadı.');
       }
     }
+  }, [duration, isWatchPartyHost, media, nextMediaData, onPlayNextMedia, profileId, saveProgressToDb, sleepTimer, user, watchPartyRoom]);
+  playNextEpisodeRef.current = () => {
+    void handlePlayNextEpisode();
   };
+
+  // Schedule against the player's real remaining duration. Re-renders resync the
+  // timeout; pausing cancels it, so an independent counter cannot drift.
+  useEffect(() => {
+    if (!showNextEpisodeCountdown || isNextBannerDismissed || !isPlaying || !nextMediaData) return;
+    const remainingMs = Math.max(0, (duration - currentTime) * 1000);
+    const timer = setTimeout(handlePlayNextEpisode, remainingMs);
+    return () => clearTimeout(timer);
+  }, [currentTime, duration, handlePlayNextEpisode, isNextBannerDismissed, isPlaying, nextMediaData, showNextEpisodeCountdown]);
 
   // ─── UYKU ZAMANLAYICISI (SLEEP TIMER) & AUDIO FADE-OUT ─────────────
   useEffect(() => {
@@ -693,7 +815,12 @@ export function VideoPlayerView({
       }
     }, 1000);
 
-    return () => clearInterval(timer);
+    return () => {
+      clearInterval(timer);
+      if (playerRef.current && originalVolumeRef.current !== undefined) {
+        playerRef.current.volume = originalVolumeRef.current;
+      }
+    };
   }, [sleepTimer]);
 
   useEffect(() => {
@@ -834,6 +961,8 @@ export function VideoPlayerView({
   );
 
   const tvMenuOpen = Platform.isTV && (quickOverlayMode !== 'none' || showEpisodesDrawer || showSettingsMenu || showSubtitleMenu || showQualityMenu || showAudioMenu || showSubtitleAppearanceMenu || showWatchPartyChat);
+  const tvMenuOpenRef = useRef(tvMenuOpen);
+  tvMenuOpenRef.current = tvMenuOpen;
 
   // ─── KONTROL GİZLE ───────────────────────────────────────────────
   useEffect(() => {
@@ -876,45 +1005,111 @@ export function VideoPlayerView({
     } catch (e) { }
   }, []);
 
+  const durationRef = useRef(duration);
+  durationRef.current = duration;
+
+  const commitQueuedTVSeek = useCallback(() => {
+    if (tvSeekCommitTimerRef.current) {
+      clearTimeout(tvSeekCommitTimerRef.current);
+      tvSeekCommitTimerRef.current = null;
+    }
+    const target = seekPreviewTimeRef.current;
+    if (playerRef.current && target !== undefined) {
+      try {
+        playerRef.current.currentTime = target;
+        currentTimeRef.current = target;
+        setCurrentTime(target);
+        saveProgressToDb(target);
+      } catch { }
+    }
+    seekPreviewTimeRef.current = undefined;
+    setSeekPreviewTime(undefined);
+    setIsSeeking(false);
+  }, [saveProgressToDb]);
+  const commitQueuedTVSeekRef = useRef(commitQueuedTVSeek);
+  commitQueuedTVSeekRef.current = commitQueuedTVSeek;
+
+  const queueTVSeek = useCallback((direction: -1 | 1, repeatCount = 0) => {
+    const currentDuration = durationRef.current || playerRef.current?.duration || 0;
+    if (!playerRef.current || currentDuration <= 0) return;
+    const now = Date.now();
+    if (repeatCount > 0 && now - lastTvSeekStepAtRef.current < 55) return;
+    lastTvSeekStepAtRef.current = now;
+
+    const base = seekPreviewTimeRef.current ?? playerRef.current.currentTime ?? currentTimeRef.current;
+    const target = Math.max(0, Math.min(currentDuration, base + direction * getTVSeekStepSeconds(repeatCount)));
+    seekPreviewTimeRef.current = target;
+    setSeekPreviewTime(target);
+    setIsSeeking(true);
+    setControlsVisible(true);
+
+    if (tvSeekCommitTimerRef.current) clearTimeout(tvSeekCommitTimerRef.current);
+    // ACTION_UP normally commits physical D-pad seeks. This is a safety net for
+    // remotes that never deliver a release event.
+    tvSeekCommitTimerRef.current = setTimeout(() => {
+      commitQueuedTVSeekRef.current();
+    }, 650);
+  }, []);
+  const queueTVSeekRef = useRef(queueTVSeek);
+  queueTVSeekRef.current = queueTVSeek;
+
+  const prolongControlsRef = useRef(prolongControls);
+  prolongControlsRef.current = prolongControls;
+
+  const broadcastPartyStateRef = useRef(broadcastPartyState);
+  broadcastPartyStateRef.current = broadcastPartyState;
+
+  useEffect(() => () => {
+    if (tvSeekCommitTimerRef.current) clearTimeout(tvSeekCommitTimerRef.current);
+  }, []);
+
+  useEffect(() => {
+    if (!controlsVisible) timelineFocusedRef.current = false;
+  }, [controlsVisible]);
+
   // TV Remote D-Pad & Physical Media Keys (Netflix/Leanback style - Yalnızca TV cihazlarında aktif)
   useEffect(() => {
     if (!Platform.isTV) return;
 
-    const handleTVKeyEvent = (type: string) => {
-      const intent = getTVPlaybackIntent(type, { controlsVisible, menuOpen: tvMenuOpen, isMovie });
-      if (!intent) { if (!tvMenuOpen) prolongControls(); return; }
+    const handleTVKeyEvent = (type: string, repeatCount = 0, timelineFocused = timelineFocusedRef.current) => {
+      const intent = getTVPlaybackIntent(type, {
+        controlsVisible: controlsVisibleRef.current,
+        menuOpen: tvMenuOpenRef.current,
+        isMovie: isMovieRef.current,
+        timelineFocused,
+      });
+      if (!intent) {
+        if (!tvMenuOpenRef.current) prolongControlsRef.current?.();
+        return;
+      }
       if (intent === 'reveal') { setControlsVisible(true); return; }
       if (intent === 'settings') { setQuickOverlayMode('topBar'); return; }
       if (intent === 'episodes') { setQuickOverlayMode('bottomShelf'); return; }
-      if (intent === 'next') { handlePlayNextEpisode(); return; }
+      if (intent === 'next') { playNextEpisodeRef.current?.(); return; }
       if (intent === 'info') { setShowStatsForNerds(prev => !prev); return; }
       const currentPlayer = playerRef.current;
       if (!currentPlayer) return;
       try {
         if (intent === 'rewind' || intent === 'forward') {
-          if (!(duration > 0)) return;
-          const target = Math.max(0, Math.min(duration, currentPlayer.currentTime + (intent === 'forward' ? 10 : -10)));
-          currentPlayer.currentTime = target;
-          currentTimeRef.current = target;
-          setCurrentTime(target);
-          saveProgressToDb(target);
-          setSeekAnim(intent === 'forward' ? 'right' : 'left');
-          setControlsVisible(true);
+          queueTVSeekRef.current?.(intent === 'forward' ? 1 : -1, repeatCount);
         } else {
-          const play = intent === 'play' || (intent === 'toggle' && !isPlaying);
+          const play = intent === 'play' || (intent === 'toggle' && !isPlayingRef.current);
           if (play) currentPlayer.play(); else currentPlayer.pause();
           setIsPlaying(play);
-          broadcastPartyState(play, currentPlayer.currentTime || 0);
+          broadcastPartyStateRef.current?.(play, currentPlayer.currentTime || 0);
           setControlsVisible(true);
         }
       } catch { }
-      prolongControls();
+      prolongControlsRef.current?.();
     };
 
     // 1. Android TV Native Event Bridge (from MainActivity dispatchKeyEvent)
     const nativeKeySub = DeviceEventEmitter.addListener('TVKeyEvent', (evt: any) => {
-      if (evt?.eventType && (evt.action == null || evt.action === 0)) {
-        handleTVKeyEvent(evt.eventType);
+      if (!evt?.eventType) return;
+      if (evt.action === 1 && (evt.eventType === 'left' || evt.eventType === 'right')) {
+        commitQueuedTVSeekRef.current?.();
+      } else if (evt.action == null || evt.action === 0) {
+        handleTVKeyEvent(evt.eventType, evt.repeatCount || 0, Boolean(evt.seekControlFocused));
       }
     });
 
@@ -938,18 +1133,37 @@ export function VideoPlayerView({
         legacyHandler?.disable();
       } catch (err) { }
     };
-  }, [controlsVisible, duration, isPlaying, prolongControls, handlePlayNextEpisode, tvMenuOpen, isMovie, saveProgressToDb, broadcastPartyState]);
+  }, []);
 
   // ─── SANAL TV KUMANDASI CANLI SİNYAL DİNLEYİCİSİ ─────────────────────────────
   useEffect(() => {
     if (!remoteActionSignal) return;
     const { action } = remoteActionSignal;
-    if (tvMenuOpen && action.startsWith('dpad_')) return;
 
-    if (action === 'play_pause') {
+    // Android TV'de sanal D-pad'i gerçek tuş olayı olarak gönder. Böylece açık
+    // modal ve menüler React Native'in yerel odak sistemiyle gezilebilir.
+    if (
+      Platform.OS === 'android' &&
+      Platform.isTV &&
+      action.startsWith('dpad_') &&
+      NativeModules.TVRemoteKey?.sendKey
+    ) {
+      NativeModules.TVRemoteKey.sendKey(action).catch?.(() => {});
+      return;
+    }
+
+    const remoteIntent = getVirtualRemotePlaybackIntent(action, {
+      controlsVisible,
+      menuOpen: tvMenuOpen,
+      isMovie,
+      timelineFocused: timelineFocusedRef.current,
+    });
+
+    if (remoteIntent === 'toggle') {
       if (playerRef.current) {
         try {
-          if (isPlaying) {
+          const nextPlaying = !isPlaying;
+          if (!nextPlaying) {
             playerRef.current.pause();
             setIsPlaying(false);
             setControlsVisible(true);
@@ -957,65 +1171,34 @@ export function VideoPlayerView({
             playerRef.current.play();
             setIsPlaying(true);
           }
+          broadcastPartyState(nextPlaying, playerRef.current.currentTime || currentTimeRef.current);
         } catch (e) { }
       }
       prolongControls();
-    } else if (action === 'seek_forward' || action === 'dpad_right') {
-      if (playerRef.current) {
-        try {
-          const target = Math.min(duration || 0, playerRef.current.currentTime + 10);
-          playerRef.current.currentTime = target;
-          setCurrentTime(target);
-          saveProgressToDb(target);
-          setSeekAnim('right');
-        } catch (e) { }
-      }
+    } else if (remoteIntent === 'forward') {
+      queueTVSeek(1);
       prolongControls();
-    } else if (action === 'seek_backward' || action === 'dpad_left') {
-      if (playerRef.current) {
-        try {
-          const target = Math.max(0, playerRef.current.currentTime - 10);
-          playerRef.current.currentTime = target;
-          setCurrentTime(target);
-          saveProgressToDb(target);
-          setSeekAnim('left');
-        } catch (e) { }
-      }
+    } else if (remoteIntent === 'rewind') {
+      queueTVSeek(-1);
       prolongControls();
-    } else if (action === 'dpad_up') {
+    } else if (!tvMenuOpen && action === 'dpad_up') {
       setQuickOverlayMode((prev) => (prev === 'topBar' ? 'none' : 'topBar'));
       setControlsVisible(true);
       prolongControls();
-    } else if (action === 'dpad_down') {
+    } else if (!tvMenuOpen && action === 'dpad_down') {
       setQuickOverlayMode((prev) => (prev === 'bottomShelf' ? 'none' : 'bottomShelf'));
       setControlsVisible(true);
-      prolongControls();
-    } else if (action === 'dpad_center') {
-      if (quickOverlayMode !== 'none') {
-        setQuickOverlayMode('none');
-      } else if (playerRef.current) {
-        try {
-          if (isPlaying) {
-            playerRef.current.pause();
-            setIsPlaying(false);
-            setControlsVisible(true);
-          } else {
-            playerRef.current.play();
-            setIsPlaying(true);
-          }
-        } catch (e) { }
-      }
       prolongControls();
     } else if (action === 'volume_up') {
       if (playerRef.current) {
         try {
-          playerRef.current.volume = Math.min(1.0, (playerRef.current.volume || 1.0) + 0.1);
+          playerRef.current.volume = getAdjustedVolume(playerRef.current.volume, 0.1);
         } catch (e) { }
       }
     } else if (action === 'volume_down') {
       if (playerRef.current) {
         try {
-          playerRef.current.volume = Math.max(0.0, (playerRef.current.volume || 1.0) - 0.1);
+          playerRef.current.volume = getAdjustedVolume(playerRef.current.volume, -0.1);
         } catch (e) { }
       }
     } else if (action === 'volume_mute') {
@@ -1025,7 +1208,7 @@ export function VideoPlayerView({
         } catch (e) { }
       }
     }
-  }, [remoteActionSignal, duration, isPlaying, quickOverlayMode, prolongControls, saveProgressToDb, tvMenuOpen]);
+  }, [broadcastPartyState, controlsVisible, isMovie, isPlaying, prolongControls, queueTVSeek, remoteActionSignal, tvMenuOpen]);
 
   // Web Klavye Kısayolları (Space, Ok Tuşları, F, M, Esc) & Fare Kontrolü
   useEffect(() => {
@@ -1113,13 +1296,19 @@ export function VideoPlayerView({
   }, [isPlaying, duration, prolongControls, saveProgressToDb, onClose]);
 
   // ─── PROVIDER DÖNGÜSÜ ─────────────────────────────────────────────
-  const tryNextProvider = useCallback(async () => {
+  const tryNextProvider = useCallback(async (force = false) => {
+    if (Platform.OS === 'web') {
+      setResolving(false);
+      setLoading(false);
+      setError('Video akışı oynatılamadı. Lütfen tekrar deneyin.');
+      return;
+    }
     // Eğer akış zaten bulunduysa VEYA video oynatılıyorsa ARTIK YENİ SAĞLAYICI ARAMA!
-    if (
+    if (!force && (
       isStreamFoundRef.current ||
       currentStreamUrlRef.current ||
       (playerRef.current?.currentTime || 0) > 0
-    ) {
+    )) {
       if (resolverTimeoutRef.current) {
         clearTimeout(resolverTimeoutRef.current);
         resolverTimeoutRef.current = null;
@@ -1268,14 +1457,52 @@ export function VideoPlayerView({
     } catch (e) { }
   }, [isJellyfin]);
 
-  // ─── STREAM SESSION MANAGER BAĞLANTISI ───────────────────────────
   const currentMediaKey = `${isMovie ? 'movie' : 'tv'}_${tmdbId}_${seasonNum}_${episodeNum}`;
+
+  // Medya veya bölüm değiştiğinde oynatıcı durumunu ve yaşam döngüsü bayraklarını atomik sıfırla
+  const lastActiveMediaKeyRef = useRef(currentMediaKey);
+  useEffect(() => {
+    if (lastActiveMediaKeyRef.current !== currentMediaKey) {
+      lastActiveMediaKeyRef.current = currentMediaKey;
+      hasStartedRef.current = false;
+      bingeTransitioningRef.current = false;
+      isStreamFoundRef.current = false;
+      hasSeekedRef.current = false;
+      autoRetryCountRef.current = 0;
+      providerIndexRef.current = 0;
+      activeProviderIndexRef.current = 0;
+      resumeFromSecondsRef.current = null;
+      failedStreamUrlsRef.current.clear();
+      scannedTrackSourceUrlsRef.current.clear();
+      originalStreamRef.current = null;
+      preferredFullStreamUrlRef.current = null;
+      playbackGenerationGuardRef.current.advance();
+
+      setStreamUrl(null);
+      setStreamHeaders({});
+      setError(null);
+      setLoading(true);
+      setResolving(true);
+      setCurrentTime(0);
+      currentTimeRef.current = 0;
+      setDuration(0);
+      setSubtitles([]);
+      setSelectedSubtitle(null);
+      setExternalCues([]);
+      setSubtitleText('');
+      setAudioTracks([]);
+      setCurrentAudioTrack(null);
+      setIntroData(null);
+      setAvailableQualities([]);
+      setSelectedQuality('auto');
+    }
+  }, [currentMediaKey]);
   const originalAudioLanguage = media?.original_language || media?.originalLanguage || 'en';
   useEffect(() => {
     const handleSessionChange = (session: any) => {
       if (session && session.streamUrl) {
         // Oturum başka bir medyaya aitse (örn: arka plan hero banner önbelleği), aktif oynatıcıya kabul etme!
-        if (session.mediaKey && session.mediaKey !== currentMediaKey) {
+        if (session.mediaKey !== currentMediaKey) {
           console.log(`[StreamSessionManager] Farklı medya için session (${session.mediaKey} !== ${currentMediaKey}), yok sayıldı.`);
           return;
         }
@@ -1299,6 +1526,9 @@ export function VideoPlayerView({
           const withoutStaleOriginal = prev.filter((track) => !track.isOriginalStream);
           return [originalTrack, ...withoutStaleOriginal];
         });
+        if (preferredFullStreamUrlRef.current && preferredFullStreamUrlRef.current !== session.streamUrl) {
+          return;
+        }
         setStreamUrl(session.streamUrl);
         setStreamHeaders(session.headers || {});
         setResolving(false);
@@ -1308,7 +1538,7 @@ export function VideoPlayerView({
     streamSessionManager.addListener(handleSessionChange);
     return () => {
       streamSessionManager.removeListener(handleSessionChange);
-      streamSessionManager.clearSession();
+      streamSessionManager.clearSession(currentMediaKey);
     };
   }, [currentMediaKey, originalAudioLanguage]);
 
@@ -1336,6 +1566,13 @@ export function VideoPlayerView({
     setLoading(true);
     providerIndexRef.current = 0;
 
+    let cancelled = false;
+    const resolutionGen = playbackGenerationGuardRef.current.current();
+    const isActiveResolution = () =>
+      !cancelled &&
+      isMountedRef.current &&
+      playbackGenerationGuardRef.current.isCurrent(resolutionGen);
+
     async function startStreamResolution() {
       // 0. Çevrimdışı yerel dosya oynatma kontrolü (Uçak modu / İnternetsiz izleme)
       if (
@@ -1362,6 +1599,7 @@ export function VideoPlayerView({
 
       // Önceden kaydedilmiş çalışan doğrudan akış URL'si varsa önce onu dene (Stream URL Cache)
       if (
+        isMovie &&
         media?.savedStreamUrl &&
         typeof media.savedStreamUrl === 'string' &&
         (media.savedStreamUrl.includes('.m3u8') || media.savedStreamUrl.includes('.mp4') || media.savedStreamUrl.includes('/playlist/')) &&
@@ -1396,9 +1634,12 @@ export function VideoPlayerView({
       }
 
       const cacheKey = streamPreheater.generateKey(tmdbId, isMovie ? 'movie' : 'tv', seasonNum, episodeNum);
-      let preheated = media?.preheatedData || streamPreheater.get(cacheKey);
+      const suppliedPreheat = media?.preheatedData;
+      let preheated = suppliedPreheat?.key === cacheKey
+        ? suppliedPreheat
+        : streamPreheater.get(cacheKey);
 
-      if (preheated?.streamResult?.streamUrl) {
+      if (preheated?.streamResult?.streamUrl && !preheated.streamResult.isEmbed && isDirectStream(preheated.streamResult.streamUrl)) {
         console.log('[Fast-Path] ⚡ Instant Play Activated from Preheated Cache!', preheated.streamResult.streamUrl);
         streamSessionManager.setSession({
           streamUrl: preheated.streamResult.streamUrl,
@@ -1424,7 +1665,7 @@ export function VideoPlayerView({
             preheated.inFlightPromise,
             new Promise((_, reject) => setTimeout(() => reject(new Error('Preheat timeout')), 3500))
           ]);
-          if (res?.streamResult?.streamUrl && !isStreamFoundRef.current && isMountedRef.current) {
+          if (res?.streamResult?.streamUrl && !res.streamResult.isEmbed && isDirectStream(res.streamResult.streamUrl) && !isStreamFoundRef.current && isActiveResolution()) {
             console.log('[Fast-Path] ⚡ In-flight preheat resolved stream successfully!', res.streamResult.streamUrl);
             streamSessionManager.setSession({
               streamUrl: res.streamResult.streamUrl,
@@ -1456,9 +1697,11 @@ export function VideoPlayerView({
         seasonNum,
         episodeNum,
         cleanBaseUrl,
-        timeoutMs: 6000,
+        timeoutMs: Platform.OS === 'web' ? 18000 : 6000,
         audioLang: toAudioLanguageCode(originalAudioLanguage),
       });
+
+      if (!isActiveResolution()) return;
 
       if (directResult && !directResult.isEmbed && directResult.streamUrl) {
         isStreamFoundRef.current = true;
@@ -1488,7 +1731,15 @@ export function VideoPlayerView({
         return;
       }
 
-      // Backend doğrudan bir embed URL döndürdüyse (örn: VidSrc.in embed), bunu doğrudan WebView çözücüsüne ver
+      if (Platform.OS === 'web') {
+        setResolverUrl(null);
+        setResolving(false);
+        setLoading(false);
+        setError('Sunucular oynatılabilir video akışı bulamadı. Lütfen tekrar deneyin.');
+        return;
+      }
+
+      // Native fallback only: browser cannot run the hidden WebView resolver.
       if (directResult && directResult.isEmbed && directResult.streamUrl && isMountedRef.current) {
         console.log(`[VideoPlayerView] ⚡ Backend embed URL döndü, doğrudan WebView çözücüsüne veriliyor: ${directResult.streamUrl}`);
         setResolverUrl(directResult.streamUrl);
@@ -1511,7 +1762,8 @@ export function VideoPlayerView({
       }
     }
 
-    streamSessionManager.setRefreshHandler(async () => {
+    streamSessionManager.setRefreshHandler(currentMediaKey, async () => {
+      if (!isActiveResolution()) return;
       isStreamFoundRef.current = false;
       providerIndexRef.current = 0;
       await startStreamResolution();
@@ -1520,9 +1772,11 @@ export function VideoPlayerView({
     startStreamResolution();
 
     return () => {
+      cancelled = true;
+      streamSessionManager.clearRefreshHandler(currentMediaKey);
       if (resolverTimeoutRef.current) clearTimeout(resolverTimeoutRef.current);
     };
-  }, [tmdbId, isMovie, seasonNum, episodeNum, externalStreamUrl, preferencesLoaded]);
+  }, [tmdbId, isMovie, seasonNum, episodeNum, externalStreamUrl, preferencesLoaded, resolutionAttempt]);
 
   // ─── BAĞIMSIZ TÜRKÇE DUBLAJ YAYINI / SES ÇÖZÜMÜ ────────────────────
   useEffect(() => {
@@ -1532,6 +1786,7 @@ export function VideoPlayerView({
     if (!tmdbId && !media?.title && !media?.name) return;
 
     let isCancelled = false;
+    const dubGen = playbackGenerationGuardRef.current.current();
 
     const searchImdbId =
       media.imdb_id ||
@@ -1574,7 +1829,7 @@ export function VideoPlayerView({
       isMovie,
     })
       .then((dubResults) => {
-        if (isCancelled || !isMountedRef.current) return;
+        if (isCancelled || !isMountedRef.current || !playbackGenerationGuardRef.current.isCurrent(dubGen)) return;
         if (dubResults && dubResults.length > 0) {
           console.log(`[VideoPlayerView] 🎙️ ${dubResults.length} Yerel Türkçe Dublaj Akışı Bulundu:`, dubResults.map((d) => d.provider));
 
@@ -1604,6 +1859,7 @@ export function VideoPlayerView({
             );
             if (!hasEmbeddedTurkish && (!hasAutoSelectedAudioRef.current || (currentStreamUrlRef.current && currentStreamUrlRef.current !== firstDub.streamUrl))) {
               hasAutoSelectedAudioRef.current = true;
+              preferredFullStreamUrlRef.current = firstDub.streamUrl;
               setSubtitleToast(`Ses: ${firstDub.provider || 'Türkçe Dublaj'}`);
               resumeFromSecondsRef.current = playerRef.current?.currentTime || currentTimeRef.current || 0;
               hasSeekedRef.current = false;
@@ -1684,9 +1940,18 @@ export function VideoPlayerView({
         artwork: media?.posterUrl || media?.poster_path || media?.backdropUrl || undefined,
       },
     };
-    player.replaceAsync(source).catch((e: any) => {
-      console.error('replaceAsync hatası:', e);
-    });
+    const replaceGeneration = ++replaceGenerationRef.current;
+    playerReplaceQueueRef.current = playerReplaceQueueRef.current
+      .catch(() => undefined)
+      .then(async () => {
+        if (replaceGeneration !== replaceGenerationRef.current || !isMountedRef.current) return;
+        await player.replaceAsync(source);
+      })
+      .catch((e: any) => {
+        if (replaceGeneration === replaceGenerationRef.current) {
+          console.error('replaceAsync hatası:', e);
+        }
+      });
   }, [player, streamUrl, streamHeaders, title, isMovie, seasonNum, episodeNum, media]);
 
   // Web Ortamında Hls.js ile .m3u8 Doğrudan Akışını <video> Elementine Bağlama (Chrome/Edge/Firefox)
@@ -1770,12 +2035,17 @@ export function VideoPlayerView({
   // HLS Master Manifest Çözünürlük Ayrıştırıcı (Gerçek 1080p / 720p / 480p / 360p akışlarını çeker)
   useEffect(() => {
     if (!streamUrl) return;
-    if (!masterStreamUrlRef.current && (streamUrl.includes('.m3u8') || streamUrl.includes('/playlist/'))) {
+    const isKnownVariant = Object.values(hlsQualityMapRef.current).includes(streamUrl);
+    if (!isKnownVariant && (streamUrl.includes('.m3u8') || streamUrl.includes('/playlist/'))) {
       masterStreamUrlRef.current = streamUrl;
+      hlsQualityMapRef.current = {};
+      setAvailableQualities([]);
+      setSelectedQuality('auto');
     }
 
     const currentMaster = masterStreamUrlRef.current || streamUrl;
     if (currentMaster.includes('.m3u8') || currentMaster.includes('/playlist/')) {
+      const qualityGeneration = ++qualityGenerationRef.current;
       const effectiveHeaders: Record<string, string> = {
         'User-Agent':
           'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
@@ -1786,12 +2056,15 @@ export function VideoPlayerView({
       };
 
       fetchAndParseHlsQualities(currentMaster, effectiveHeaders).then((res) => {
-        if (res && res.variants.length > 0) {
+        if (qualityGeneration === qualityGenerationRef.current && res && res.variants.length > 0) {
           hlsQualityMapRef.current = res.qualityMap;
           setAvailableQualities(Object.keys(res.qualityMap));
         }
       });
     }
+    return () => {
+      qualityGenerationRef.current++;
+    };
   }, [streamUrl, streamHeaders]);
 
   // Kalite Değiştirme Fonksiyonu (Anlık video akışını ilgili çözünürlük alt dizinine yönlendirir)
@@ -1883,6 +2156,16 @@ export function VideoPlayerView({
           autoRetryCountRef.current += 1;
           resumeFromSecondsRef.current = currentSec;
 
+          if (!isJellyfin && shouldRotateFailedStream(autoRetryCountRef.current, 3)) {
+            if (streamUrl) failedStreamUrlsRef.current.add(streamUrl);
+            isStreamFoundRef.current = false;
+            currentStreamUrlRef.current = null;
+            setStreamUrl(null);
+            providerIndexRef.current = Math.max(providerIndexRef.current, activeProviderIndexRef.current + 1);
+            tryNextProvider(true);
+            return;
+          }
+
           setLoading(true);
           setError(null);
           if (isJellyfin) {
@@ -1904,7 +2187,7 @@ export function VideoPlayerView({
                 audioLang: toAudioLanguageCode(preferredAudioLangRef.current),
               })
                 .then((fresh) => {
-                  if (fresh?.streamUrl && isMountedRef.current) {
+                  if (fresh?.streamUrl && isMountedRef.current && !failedStreamUrlsRef.current.has(fresh.streamUrl)) {
                     console.log('[Auto-Retry] ✅ Taze akış başarıyla alındı:', fresh.streamUrl);
                     streamSessionManager.setSession({
                       streamUrl: fresh.streamUrl,
@@ -1947,11 +2230,23 @@ export function VideoPlayerView({
       }
     });
 
+    const s3 = player.addListener('playToEnd', () => {
+      const finalDuration = player.duration || 0;
+      if (finalDuration > 0) {
+        setCurrentTime(finalDuration);
+        currentTimeRef.current = finalDuration;
+      }
+      if (!isMovie && !isNextBannerDismissedRef.current) {
+        playNextEpisodeRef.current();
+      }
+    });
+
     return () => {
       s1.remove();
       s2.remove();
+      s3.remove();
     };
-  }, [player, streamUrl, startSeconds, jellyfinDurationInSeconds, media, isJellyfin, serverUrl, itemId, userId, token, tryNextProvider]);
+  }, [player, streamUrl, startSeconds, jellyfinDurationInSeconds, media, isJellyfin, serverUrl, itemId, userId, token, tryNextProvider, isMovie]);
 
   // ─── CANLI SÜRE SENKRONİZASYONU VE PROGRESS KAYIT ──────────────────────────────
   // ─── CANLI SÜRE SENKRONİZASYONU VE PROGRESS KAYIT (KAYDIRARAK ÇIKMA DESTEKLİ) ───
@@ -2076,6 +2371,7 @@ export function VideoPlayerView({
   // ─── HARİCİ ALTYAZI YÜKLEME ────────────────────────────────────
 
   const loadExternalSubtitle = useCallback(async (track: SubtitleTrack) => {
+    const activeGen = playbackGenerationGuardRef.current.current();
     try {
       setOpenSubtitlesLoading(true);
       let cues: Array<{ text: string; start: number; end: number }> = [];
@@ -2093,18 +2389,26 @@ export function VideoPlayerView({
           headers: requestHeaders,
         });
         console.log(`[Subtitle Fetch] Yanıt Kodu: ${res.status}`);
+        if (!isMountedRef.current || !playbackGenerationGuardRef.current.isCurrent(activeGen)) return;
         if (res.ok) {
           const subtitlePayload = await res.text();
           if (subtitlePayload.trim().startsWith('#EXTM3U')) {
             const segmentUrls = parseHlsSegmentUrls(subtitlePayload, track.url);
             console.log(`[Subtitle Fetch] HLS altyazı listesinde ${segmentUrls.length} parça bulundu.`);
-            const segmentResults = await Promise.allSettled(
-              segmentUrls.map(async (segmentUrl) => {
-                const segmentRes = await fetch(segmentUrl, { headers: requestHeaders });
-                if (!segmentRes.ok) return [];
-                return parseSubtitles(await segmentRes.text());
-              })
-            );
+            const segmentResults: Array<PromiseSettledResult<Array<{ text: string; start: number; end: number }>>> = [];
+            const chunkSize = 6;
+            for (let i = 0; i < segmentUrls.length; i += chunkSize) {
+              if (!isMountedRef.current || !playbackGenerationGuardRef.current.isCurrent(activeGen)) return;
+              const chunk = segmentUrls.slice(i, i + chunkSize);
+              const chunkRes = await Promise.allSettled(
+                chunk.map(async (segmentUrl) => {
+                  const segmentRes = await fetch(segmentUrl, { headers: requestHeaders });
+                  if (!segmentRes.ok) return [];
+                  return parseSubtitles(await segmentRes.text());
+                })
+              );
+              segmentResults.push(...chunkRes);
+            }
             cues = segmentResults.flatMap((result) => result.status === 'fulfilled' ? result.value : []);
           } else {
             console.log(`[Subtitle Fetch] Alınan altyazı içeriği (ilk 100 karakter): ${subtitlePayload.substring(0, 100)}`);
@@ -2115,6 +2419,8 @@ export function VideoPlayerView({
         }
       }
 
+      if (!isMountedRef.current || !playbackGenerationGuardRef.current.isCurrent(activeGen)) return;
+
       cues.sort((a, b) => a.start - b.start);
       console.log(`[Subtitle Fetch] Toplam ${cues.length} adet altyazı bloğu çıkarıldı.`);
 
@@ -2122,7 +2428,7 @@ export function VideoPlayerView({
         console.warn('Altyazı içeriği okunamadı veya boş:', track.label);
         setSubtitleToast('Bu altyazı indirilemedi. Lütfen listeden başka bir altyazı seçin.');
         toastTimeoutRef.current = setTimeout(() => {
-          if (isMountedRef.current) setSubtitleToast(null);
+          if (isMountedRef.current && playbackGenerationGuardRef.current.isCurrent(activeGen)) setSubtitleToast(null);
         }, 4000);
         setExternalCues([]);
         setSubtitleText('');
@@ -2133,16 +2439,17 @@ export function VideoPlayerView({
         setSelectedSubtitle(track);
       }
     } catch (e) {
+      if (!isMountedRef.current || !playbackGenerationGuardRef.current.isCurrent(activeGen)) return;
       console.error('Altyazı yüklenemedi:', e);
       setSubtitleToast('Altyazı indirilemedi. Başka bir altyazı deneyin.');
       toastTimeoutRef.current = setTimeout(() => {
-        if (isMountedRef.current) setSubtitleToast(null);
+        if (isMountedRef.current && playbackGenerationGuardRef.current.isCurrent(activeGen)) setSubtitleToast(null);
       }, 4000);
       setSubtitleText('');
       setExternalCues([]);
       setSelectedSubtitle(null);
     } finally {
-      if (isMountedRef.current) setOpenSubtitlesLoading(false);
+      if (isMountedRef.current && playbackGenerationGuardRef.current.isCurrent(activeGen)) setOpenSubtitlesLoading(false);
     }
   }, []);
 
@@ -2177,12 +2484,13 @@ export function VideoPlayerView({
 
 
 
-  const extractM3u8Subtitles = useCallback(async (url: string, headers: any, provider?: string) => {
+  const extractM3u8Subtitles = useCallback(async (url: string, headers: any, provider?: string, gen = playbackGenerationGuardRef.current.current()) => {
     try {
       console.log(`[Subtitles] Ana m3u8 çekiliyor... URL: ${url}`);
       const res = await fetch(url, { headers });
       if (!res.ok) return false;
       const m3u8Text = await res.text();
+      if (!isMountedRef.current || !playbackGenerationGuardRef.current.isCurrent(gen)) return false;
       const { subtitleTracks } = parseHlsMediaTracks(m3u8Text, url, headers || {});
       const extractedTracks: SubtitleTrack[] = subtitleTracks.map((track) => ({
         ...track,
@@ -2192,6 +2500,7 @@ export function VideoPlayerView({
       }));
 
       if (extractedTracks.length > 0) {
+        if (!isMountedRef.current || !playbackGenerationGuardRef.current.isCurrent(gen)) return false;
         console.log(`[Subtitles] ${extractedTracks.length} adet altyazı izi çıkarıldı!`);
         setSubtitles((prev) => {
           const merged = [...prev, ...extractedTracks];
@@ -2205,7 +2514,7 @@ export function VideoPlayerView({
             console.log(`[AutoSelect] Tercih edilen altyazı bulundu: ${autoMatch.label}`);
             // Küçük bir gecikmeyle çağırıyoruz ki state yerleşsin
             autoSelectSubTimeoutRef.current = setTimeout(() => {
-              if (isMountedRef.current) loadExternalSubtitle(autoMatch);
+              if (isMountedRef.current && playbackGenerationGuardRef.current.isCurrent(gen)) loadExternalSubtitle(autoMatch);
             }, 500);
           }
         }
@@ -2216,14 +2525,15 @@ export function VideoPlayerView({
       console.error(`[VixSrc Subtitles] Çıkarma hatası:`, err);
     }
     return false;
-  }, []);
+  }, [loadExternalSubtitle]);
 
-  const extractM3u8AudioTracks = useCallback(async (url: string, headers: any) => {
+  const extractM3u8AudioTracks = useCallback(async (url: string, headers: any, gen = playbackGenerationGuardRef.current.current()) => {
     try {
       console.log(`[Audio/Dublaj] Ana m3u8 ses izleri taranıyor... URL: ${url}`);
       const res = await fetch(url, { headers });
       if (!res.ok) return false;
       const m3u8Text = await res.text();
+      if (!isMountedRef.current || !playbackGenerationGuardRef.current.isCurrent(gen)) return false;
       const { audioTracks: parsedAudioTracks } = parseHlsMediaTracks(m3u8Text, url, headers || {});
       const extractedAudios: AudioTrack[] = parsedAudioTracks.map((track) => ({
         ...track,
@@ -2231,6 +2541,7 @@ export function VideoPlayerView({
       }));
 
       if (extractedAudios.length > 0) {
+        if (!isMountedRef.current || !playbackGenerationGuardRef.current.isCurrent(gen)) return false;
         console.log(`[Audio/Dublaj] ${extractedAudios.length} adet ses parçası başarıyla çıkarıldı!`);
         setAudioTracks(prev => {
           const merged = [...prev, ...extractedAudios];
@@ -2290,6 +2601,7 @@ export function VideoPlayerView({
 
   useEffect(() => {
     if (isJellyfin) return;
+    const scanGen = playbackGenerationGuardRef.current.current();
 
     const sources = [
       ...audioTracks
@@ -2304,17 +2616,23 @@ export function VideoPlayerView({
       if (scannedTrackSourceUrlsRef.current.has(source.url)) continue;
       scannedTrackSourceUrlsRef.current.add(source.url);
       Promise.all([
-        extractM3u8AudioTracks(source.url, source.headers),
-        extractM3u8Subtitles(source.url, source.headers, source.provider),
+        extractM3u8AudioTracks(source.url, source.headers, scanGen),
+        extractM3u8Subtitles(source.url, source.headers, source.provider, scanGen),
       ]).then(([hasAudio, hasSubtitles]) => {
         if (!hasAudio && !hasSubtitles) scannedTrackSourceUrlsRef.current.delete(source.url);
       }).catch(() => scannedTrackSourceUrlsRef.current.delete(source.url));
     }
   }, [streamUrl, streamHeaders, audioTracks, extractM3u8AudioTracks, extractM3u8Subtitles, isJellyfin]);
 
-  // Harici altyazı senkronizasyonu
+  // Harici altyazı senkronizasyonu (200ms hassas senkronizasyon döngüsü)
   useEffect(() => {
-    if (externalCues.length > 0) {
+    if (!externalCues || externalCues.length === 0) {
+      setSubtitleText('');
+      return;
+    }
+
+    const syncSubtitles = () => {
+      const now = playerRef.current?.currentTime ?? currentTimeRef.current ?? 0;
       let left = 0;
       let right = externalCues.length - 1;
       let activeText = '';
@@ -2323,20 +2641,22 @@ export function VideoPlayerView({
         const mid = Math.floor((left + right) / 2);
         const cue = externalCues[mid];
 
-        if (currentTime >= cue.start && currentTime <= cue.end) {
+        if (now >= cue.start && now <= cue.end) {
           activeText = cue.text;
           break;
-        } else if (currentTime < cue.start) {
+        } else if (now < cue.start) {
           right = mid - 1;
         } else {
           left = mid + 1;
         }
       }
-      setSubtitleText(activeText);
-    } else {
-      setSubtitleText('');
-    }
-  }, [currentTime, externalCues]);
+      setSubtitleText(prev => (prev !== activeText ? activeText : prev));
+    };
+
+    syncSubtitles();
+    const interval = setInterval(syncSubtitles, 200);
+    return () => clearInterval(interval);
+  }, [externalCues]);
 
   const clearSubtitles = useCallback(() => {
     if (playerRef.current) {
@@ -2740,7 +3060,7 @@ export function VideoPlayerView({
         <VideoView
           ref={videoViewRef}
           player={player}
-          style={[StyleSheet.absoluteFillObject, { opacity: (resolving || error) ? 0 : 1 }]}
+          style={[StyleSheet.absoluteFillObject, { opacity: (resolving || error || (Platform.OS === 'web' && isEmbedUrl)) ? 0 : 1 }]}
           nativeControls={false}
           contentFit={contentFit}
           playsInline={true}
@@ -2782,7 +3102,7 @@ export function VideoPlayerView({
           />
         )}
 
-        {!isAnyMiniActive && seekAnim && (
+        {!Platform.isTV && !isAnyMiniActive && seekAnim && (
           <DoubleTapSeekRipple side={seekAnim} seconds={10} />
         )}
         {!isAnyMiniActive && !isScreenLocked && !Platform.isTV && (
@@ -2841,6 +3161,7 @@ export function VideoPlayerView({
               setError(null);
               setLoading(true);
               providerIndexRef.current = 0;
+              if (Platform.OS === 'web') setResolutionAttempt(attempt => attempt + 1);
             }}>
               <Text style={styles.retryTxt}>Tekrar Dene</Text>
             </TVTouchable>
@@ -2969,6 +3290,10 @@ export function VideoPlayerView({
               isSeeking={isSeeking}
               seekPreviewTime={seekPreviewTime}
               previewThumbnail={previewThumbnail}
+              onProgressFocusChange={(focused) => {
+                timelineFocusedRef.current = focused;
+              }}
+              preferTimelineFocus={preferredPlayerFocus === 'timeline'}
               isMovie={isMovie}
               media={media}
               onPlayNextMedia={onPlayNextMedia}
@@ -3058,9 +3383,10 @@ export function VideoPlayerView({
         {/* Netflix Tarzı Otomatik Sonraki Bölüm Sayacı */}
         {!isMiniPlayer && !isScreenLocked && !tvMenuOpen && (
           <NextEpisodeCountdownOverlay
-            visible={Boolean(showNextEpisode && !isNextBannerDismissed && nextMediaData)}
+            visible={Boolean(showNextEpisodeCountdown && !isNextBannerDismissed && nextMediaData)}
             nextMedia={nextMediaData}
-            countdownSeconds={5}
+            countdownSeconds={nextEpisodeSecondsRemaining ?? 10}
+            totalCountdownSeconds={10}
             onPlayNext={handlePlayNextEpisode}
             onDismiss={() => setIsNextBannerDismissed(true)}
           />
@@ -3072,6 +3398,7 @@ export function VideoPlayerView({
             showSkipIntro={showSkipIntro}
             showNextEpisode={Boolean(showNextEpisode && (!nextMediaData || isNextBannerDismissed))}
             controlsVisible={controlsVisible}
+            hasTVPreferredFocus={preferredPlayerFocus === 'action'}
             onSkipIntro={handleSkipIntro}
             onPlayNextEpisode={handlePlayNextEpisode}
           />
@@ -3242,6 +3569,7 @@ export function VideoPlayerView({
               const isCurrentlyExternal = Boolean(originalStreamRef.current && streamUrl !== originalStreamRef.current.streamUrl);
 
               if (isTargetExternal) {
+                preferredFullStreamUrlRef.current = selected.raw.url;
                 // 1. Harici tam bir video akışına (örneğin Türkçe Dublaj VidMoly) geçiş
                 if (streamUrl !== selected.raw.url) {
                   setSubtitleToast(`${selected.label} akışına geçiliyor...`);
@@ -3255,6 +3583,7 @@ export function VideoPlayerView({
                 setCurrentAudioTrack(null);
                 switched = true;
               } else if (isCurrentlyExternal && originalStreamRef.current) {
+                preferredFullStreamUrlRef.current = null;
                 // 2. Harici bir akıştan (VidMoly vb.) orijinal yayına ve seçilen dahili ses parçasına dönüş
                 setSubtitleToast(`${selected.label} akışına geçiliyor...`);
                 resumeFromSecondsRef.current = currentPos;
@@ -3352,7 +3681,7 @@ export function VideoPlayerView({
             onSelectEpisode={(selectedEpisode) => {
               setShowEpisodesDrawer(false);
               if (onPlayNextMedia) {
-                const nextMediaObj = {
+                const nextMediaObj = withoutStaleEpisodePlayback({
                   ...media,
                   ...selectedEpisode,
                   id: `tmdb-${selectedEpisode.id}`,
@@ -3361,8 +3690,7 @@ export function VideoPlayerView({
                   type: 'tv',
                   season_number: selectedEpisode.season_number,
                   episode_number: selectedEpisode.episode_number,
-                  positionSeconds: 0,
-                };
+                });
                 onPlayNextMedia(nextMediaObj);
               }
             }}
@@ -3456,6 +3784,7 @@ export function VideoPlayerView({
                 const isCurrentlyExternal = Boolean(originalStreamRef.current && streamUrl !== originalStreamRef.current.streamUrl);
 
                 if (isTargetExternal) {
+                  preferredFullStreamUrlRef.current = selected.raw.url;
                   if (streamUrl !== selected.raw.url) {
                     setSubtitleToast(`${selected.label} akışına geçiliyor...`);
                     resumeFromSecondsRef.current = currentPos;
@@ -3468,6 +3797,7 @@ export function VideoPlayerView({
                   setCurrentAudioTrack(null);
                   switched = true;
                 } else if (isCurrentlyExternal && originalStreamRef.current) {
+                  preferredFullStreamUrlRef.current = null;
                   setSubtitleToast(`${selected.label} akışına geçiliyor...`);
                   resumeFromSecondsRef.current = currentPos;
                   hasSeekedRef.current = false;
@@ -3579,7 +3909,7 @@ export function VideoPlayerView({
               onSelectEpisode={(idx) => {
                 if (onPlayNextMedia && media?.playlist && media.playlist[idx]) {
                   const ep = media.playlist[idx];
-                  onPlayNextMedia({
+                  onPlayNextMedia(withoutStaleEpisodePlayback({
                     ...media,
                     ...ep,
                     id: ep.Id || ep.id || media.id,
@@ -3587,8 +3917,7 @@ export function VideoPlayerView({
                     playlistIndex: idx,
                     episode_number: ep.IndexNumber || ep.episode_number || idx + 1,
                     season_number: ep.ParentIndexNumber || ep.season_number || media.season_number || 1,
-                    positionSeconds: 0,
-                  });
+                  }));
                 }
               }}
               seriesTitle={media?.show_title || media?.title || media?.name || 'Bölümler'}

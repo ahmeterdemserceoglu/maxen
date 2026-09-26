@@ -7,6 +7,7 @@ import {
   onSnapshot,
   arrayUnion,
   arrayRemove,
+  increment,
 } from 'firebase/firestore';
 import { db } from '@/config/firebase';
 
@@ -32,6 +33,7 @@ export interface WatchPartyRoom {
   hostId: string;
   hostName: string;
   media: any;
+  mediaRevision: number;
   isPlaying: boolean;
   currentTime: number;
   updatedAt: number;
@@ -42,6 +44,21 @@ export interface WatchPartyRoom {
 }
 
 const PARTY_CHARS = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+
+function normalizePartyMedia(media: any) {
+  return {
+    id: media.id || media.tmdbId,
+    tmdbId: media.tmdbId || media.id,
+    title: media.title || media.name || media.show_title || 'Video',
+    show_title: media.show_title || media.SeriesName || media.title || media.name || 'Video',
+    type: media.type || (media.season_number || media.seasonNumber ? 'tv' : 'movie'),
+    poster_path: media.poster_path || media.posterUrl || '',
+    backdrop_path: media.backdrop_path || media.backdropUrl || '',
+    seasonNumber: media.seasonNumber || media.season_number || 1,
+    episodeNumber: media.episodeNumber || media.episode_number || 1,
+    episode_title: media.episode_title || media.episodeTitle || media.name || '',
+  };
+}
 
 export function generatePartyCode(length = 6): string {
   let result = '';
@@ -78,17 +95,8 @@ export async function createWatchPartyRoom(
     code,
     hostId: user.uid,
     hostName,
-    media: {
-      id: media.id || media.tmdbId,
-      tmdbId: media.tmdbId || media.id,
-      title: media.title || media.name || media.show_title || 'Video',
-      type: media.type || (media.season_number || media.seasonNumber ? 'tv' : 'movie'),
-      poster_path: media.poster_path || media.posterUrl || '',
-      backdrop_path: media.backdrop_path || media.backdropUrl || '',
-      seasonNumber: media.seasonNumber || media.season_number || 1,
-      episodeNumber: media.episodeNumber || media.episode_number || 1,
-      episode_title: media.episode_title || media.episodeTitle || '',
-    },
+    media: normalizePartyMedia(media),
+    mediaRevision: 1,
     isPlaying,
     currentTime: initialSeconds,
     updatedAt: now,
@@ -180,15 +188,21 @@ export async function joinWatchPartyRoom(
 export async function syncWatchPartyPlayback(
   code: string,
   isPlaying: boolean,
-  currentTime: number
+  currentTime: number,
+  media?: any,
 ): Promise<void> {
   try {
     const ref = doc(db, 'watch_parties', code.trim().toUpperCase());
-    await updateDoc(ref, {
+    const update: Record<string, any> = {
       isPlaying,
       currentTime,
       updatedAt: Date.now(),
-    });
+    };
+    if (media) {
+      update.media = normalizePartyMedia(media);
+      update.mediaRevision = increment(1);
+    }
+    await updateDoc(ref, update);
   } catch (e) {
     console.warn('Watch party playback sync error:', e);
   }

@@ -9,6 +9,7 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { db } from '@/config/firebase';
 import { Platform } from 'react-native';
+import { COMPLETION_THRESHOLD } from '@/utils/playerReliability';
 
 export const HANDOFF_DEVICE_STORAGE_KEY = 'maxen_device_unique_id';
 
@@ -75,30 +76,32 @@ export async function saveActivePlaybackSession(
     const deviceId = await getOrCreateDeviceId();
     const progress = durationSeconds > 0 ? positionSeconds / durationSeconds : 0;
 
-    // Do not save as active handoff if video is completed (>92%)
-    if (progress >= 0.92) {
+    // Do not save as active handoff if video is completed (>= COMPLETION_THRESHOLD)
+    if (progress >= COMPLETION_THRESHOLD) {
       await clearActivePlaybackSession(userId, profileId);
       return;
     }
 
     const sessionRef = doc(db, 'users', userId, 'profiles', profileId, 'handoff', 'lastSession');
+    const cleanMedia = Object.fromEntries(Object.entries({
+      id: String(media.id || media.tmdbId || ''),
+      tmdbId: media.tmdbId || media.id,
+      title: String(media.title || media.name || media.show_title || 'İçerik'),
+      type: media.type === 'tv' || media.season_number ? 'tv' : 'movie',
+      show_title: media.show_title || media.name || media.title,
+      season_number: media.season_number || media.seasonNumber,
+      episode_number: media.episode_number || media.episodeNumber,
+      posterUrl: media.posterUrl || media.poster_path,
+      backdropUrl: media.backdropUrl || media.backdrop_path,
+      year: media.year,
+      rating: media.rating,
+    }).filter(([, value]) => value !== undefined)) as PlaybackSessionData['media'];
+
     const sessionData: PlaybackSessionData = {
       deviceId,
       deviceName: getDeviceFriendlyName(),
       deviceType: getDeviceType(),
-      media: {
-        id: String(media.id || media.tmdbId || ''),
-        tmdbId: media.tmdbId || media.id,
-        title: String(media.title || media.name || media.show_title || 'İçerik'),
-        type: media.type === 'tv' || media.season_number ? 'tv' : 'movie',
-        show_title: media.show_title || media.name || media.title,
-        season_number: media.season_number || media.seasonNumber,
-        episode_number: media.episode_number || media.episodeNumber,
-        posterUrl: media.posterUrl || media.poster_path,
-        backdropUrl: media.backdropUrl || media.backdrop_path,
-        year: media.year,
-        rating: media.rating,
-      },
+      media: cleanMedia,
       positionSeconds: Math.floor(positionSeconds),
       durationSeconds: Math.floor(durationSeconds),
       progress,

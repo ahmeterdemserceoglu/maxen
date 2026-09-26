@@ -9,6 +9,7 @@ interface EpisodeActionButtonsProps {
   controlsVisible: boolean;
   onSkipIntro: () => void;
   onPlayNextEpisode: () => void;
+  hasTVPreferredFocus?: boolean;
 }
 
 export function EpisodeActionButtons({
@@ -17,6 +18,7 @@ export function EpisodeActionButtons({
   controlsVisible,
   onSkipIntro,
   onPlayNextEpisode,
+  hasTVPreferredFocus = false,
 }: EpisodeActionButtonsProps) {
   if (!showSkipIntro && !showNextEpisode) return null;
 
@@ -30,7 +32,7 @@ export function EpisodeActionButtons({
     >
       {showSkipIntro && (
         <TVFocusable
-          hasTVPreferredFocus={true}
+          hasTVPreferredFocus={hasTVPreferredFocus}
           style={styles.actionBtn}
           focusedStyle={styles.actionBtnFocused}
           onPress={onSkipIntro}
@@ -42,7 +44,7 @@ export function EpisodeActionButtons({
 
       {showNextEpisode && !showSkipIntro && (
         <TVFocusable
-          hasTVPreferredFocus={true}
+          hasTVPreferredFocus={hasTVPreferredFocus}
           style={styles.actionBtn}
           focusedStyle={styles.actionBtnFocused}
           onPress={onPlayNextEpisode}

@@ -4,6 +4,14 @@
   "outputDirectory": "dist",
   "rewrites": [
     {
+      "source": "/player",
+      "destination": "/player/index.html"
+    },
+    {
+      "source": "/player/",
+      "destination": "/player/index.html"
+    },
+    {
       "source": "/api/tmdb/:path*",
       "destination": "/api/tmdb?path=/:path*"
     },

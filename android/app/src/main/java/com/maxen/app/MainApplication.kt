@@ -24,6 +24,8 @@ class MainApplication : Application(), ReactApplication {
         override fun getPackages(): List<ReactPackage> =
             PackageList(this).packages.apply {
               add(VoiceRecognitionPackage())
+              add(TVRemoteKeyPackage())
+              add(MaxenWatchNextPackage())
             }
 
           override fun getJSMainModuleName(): String = ".expo/.virtual-metro-entry"

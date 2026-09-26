@@ -14,14 +14,34 @@ export function getWatchProgress(item: any): number {
 }
 
 export function getEpisodeProgress(records: any[], showId: string | number | null | undefined, episode: any, season = 1): number {
-  if (showId == null) return 0;
+  if (showId == null || !Array.isArray(records)) return 0;
   const targetShow = extractCleanTmdbId({ id: showId });
   const targetSeason = Number(episode.season_number ?? episode.ParentIndexNumber ?? season);
   const targetEpisode = Number(episode.episode_number ?? episode.IndexNumber);
-  const record = records.find((item) =>
+
+  // 1. Doğrudan bu bölüm için saklanmış spesifik kayıt var mı?
+  const directRecord = records.find((item) =>
     extractCleanTmdbId(item) === targetShow &&
     Number(item.season_number ?? item.SeasonNumber ?? item.ParentIndexNumber) === targetSeason &&
     Number(item.episode_number ?? item.EpisodeNumber ?? item.IndexNumber) === targetEpisode
   );
-  return getWatchProgress(record);
+  if (directRecord) {
+    return getWatchProgress(directRecord);
+  }
+
+  // 2. Dizi genelinde en son kalınan kayıt üzerinden önceki bölümleri tamamlandı (1.0) say
+  const showRecord = records.find((item) => extractCleanTmdbId(item) === targetShow);
+  if (showRecord) {
+    const curShowSeason = Number(showRecord.season_number ?? showRecord.SeasonNumber ?? showRecord.ParentIndexNumber ?? 1);
+    const curShowEpisode = Number(showRecord.episode_number ?? showRecord.EpisodeNumber ?? showRecord.IndexNumber ?? 1);
+
+    if (targetSeason < curShowSeason || (targetSeason === curShowSeason && targetEpisode < curShowEpisode)) {
+      return 1.0;
+    }
+    if (targetSeason === curShowSeason && targetEpisode === curShowEpisode) {
+      return getWatchProgress(showRecord);
+    }
+  }
+
+  return 0;
 }

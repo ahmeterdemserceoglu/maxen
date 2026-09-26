@@ -17,8 +17,16 @@ import {
   mediaDocId,
   normalizeMediaItem,
 } from '@/types/profileMedia';
+import {
+  COMPLETION_THRESHOLD,
+  getContinueWatchingDocId,
+  selectLatestContinueWatching,
+  SerialWriteQueue,
+} from '@/utils/playerReliability';
 
 type ListKind = 'continueWatching' | 'favorites' | 'watchLater';
+const continueWatchingWriteQueue = new SerialWriteQueue();
+const cleanedLegacyShows = new Set<string>();
 
 function listRef(userId: string, profileId: string, kind: ListKind) {
   return collection(db, 'users', userId, 'profiles', profileId, kind);
@@ -44,9 +52,11 @@ export function subscribeToContinueWatching(
   profileId: string,
   onUpdate: (items: ProfileMediaItem[]) => void
 ) {
-  const q = query(listRef(userId, profileId, 'continueWatching'), orderBy('savedAt', 'desc'), limit(20));
+  const q = query(listRef(userId, profileId, 'continueWatching'), orderBy('savedAt', 'desc'));
   return onSnapshot(q, (snap) => {
-    onUpdate(mapSnapshot(snap as any).filter((item) => (item.progress ?? 0) < 0.95));
+    onUpdate(selectLatestContinueWatching(
+      mapSnapshot(snap as any).filter((item) => (item.progress ?? 0) < COMPLETION_THRESHOLD),
+    ));
   }, (error) => { console.warn('onSnapshot error:', error); });
 }
 
@@ -76,9 +86,11 @@ export async function getContinueWatching(
   userId: string,
   profileId: string,
 ): Promise<ProfileMediaItem[]> {
-  const q = query(listRef(userId, profileId, 'continueWatching'), orderBy('savedAt', 'desc'), limit(20));
+  const q = query(listRef(userId, profileId, 'continueWatching'), orderBy('savedAt', 'desc'));
   const snap = await getDocs(q);
-  return mapSnapshot(snap).filter((item) => (item.progress ?? 0) < 0.95);
+  return selectLatestContinueWatching(
+    mapSnapshot(snap).filter((item) => (item.progress ?? 0) < COMPLETION_THRESHOLD),
+  );
 }
 
 export async function getFavorites(userId: string, profileId: string): Promise<ProfileMediaItem[]> {
@@ -101,69 +113,52 @@ export async function saveContinueWatching(
   positionSeconds?: number,
   durationSeconds?: number,
 ): Promise<void> {
-  const docId = mediaDocId(media);
-  const ref = listDoc(userId, profileId, 'continueWatching', docId);
+  const docId = getContinueWatchingDocId(media);
+  const queueKey = `${userId}:${profileId}:${docId}`;
+  return continueWatchingWriteQueue.enqueue(queueKey, async () => {
+    const ref = listDoc(userId, profileId, 'continueWatching', docId);
+    const legacyDocId = mediaDocId(media);
 
-  // Bölüm/film bitti (>%95)
-  if (progressRatio >= 0.95) {
-    if (media.type === 'movie') {
-      // Film: kaydı tamamen sil
-      await deleteDoc(ref).catch(() => {});
+    if (progressRatio >= COMPLETION_THRESHOLD) {
+      await Promise.all([
+        deleteDoc(ref).catch(() => {}),
+        legacyDocId !== docId
+          ? deleteDoc(listDoc(userId, profileId, 'continueWatching', legacyDocId)).catch(() => {})
+          : Promise.resolve(),
+      ]);
       return;
     }
 
-    // Bitmiş bölümü sil
-    await deleteDoc(ref).catch(() => {});
-
-    // Dizi: Sonraki bölümü hesapla ve sıfır ilerlemeyle sonraki bölümün dokümanına kaydet
-    const playlist = media.playlist as any[] | undefined;
-    const currentIndex = media.playlistIndex as number | undefined;
-
-    let nextSeason = media.season_number || media.SeasonNumber || 1;
-    let nextEpisode = (media.episode_number || media.EpisodeNumber || 1) + 1;
-    let nextTitle = media.show_title || media.SeriesName || media.title || media.name;
-
-    if (playlist && currentIndex !== undefined && currentIndex < playlist.length - 1) {
-      const nextEp = playlist[currentIndex + 1];
-      nextSeason = nextEp.ParentIndexNumber || nextEp.season_number || nextSeason;
-      nextEpisode = nextEp.IndexNumber || nextEp.episode_number || nextEpisode;
-      nextTitle = nextEp.Name || nextEp.name || nextTitle;
-    }
-
-    const nextMedia = {
+    const item = normalizeMediaItem({
       ...media,
-      title: nextTitle,
-      type: 'tv' as const,
-      season_number: nextSeason,
-      episode_number: nextEpisode,
-      playlist,
-      playlistIndex: currentIndex !== undefined ? currentIndex + 1 : undefined,
-      progress: 0.001,
-      positionSeconds: 0,
+      // Network stream URLs are episode-bound and must never be restored from
+      // a show-level Continue Watching record.
+      savedStreamUrl: docId.startsWith('tv_') ? null : media.savedStreamUrl,
+      savedStreamHeaders: docId.startsWith('tv_') ? null : media.savedStreamHeaders,
+      progress: progressRatio,
+      positionSeconds: positionSeconds ?? media.positionSeconds,
       durationSeconds: durationSeconds ?? media.durationSeconds,
-    };
-    const nextDocId = mediaDocId(nextMedia);
-    const nextRef = listDoc(userId, profileId, 'continueWatching', nextDocId);
-    const nextItem = normalizeMediaItem({ ...nextMedia, savedAt: Date.now() });
-    await setDoc(nextRef, {
-      ...nextItem,
-      savedAt: serverTimestamp(),
+      savedAt: Date.now(),
     });
-    return;
-  }
 
-  // Normal ilerleme kaydı
-  const item = normalizeMediaItem({
-    ...media,
-    progress: progressRatio,
-    positionSeconds: positionSeconds ?? media.positionSeconds,
-    durationSeconds: durationSeconds ?? media.durationSeconds,
-    savedAt: Date.now(),
-  });
+    const firestoreItem = Object.fromEntries(
+      Object.entries({ ...item, savedAt: Date.now() }).filter(([, value]) => value !== undefined),
+    );
+    await setDoc(ref, firestoreItem);
 
-  await setDoc(ref, {
-    ...item,
-    savedAt: serverTimestamp(),
+    const cleanupKey = `${userId}:${profileId}:${docId}`;
+    if (!cleanedLegacyShows.has(cleanupKey) && docId.startsWith('tv_')) {
+      cleanedLegacyShows.add(cleanupKey);
+      try {
+        const snapshot = await getDocs(listRef(userId, profileId, 'continueWatching'));
+        await Promise.all(snapshot.docs
+          .filter((entry) => entry.id !== docId && entry.id.startsWith(`${docId}_S`))
+          .map((entry) => deleteDoc(entry.ref).catch(() => {})));
+      } catch (error) {
+        cleanedLegacyShows.delete(cleanupKey);
+        console.warn('Legacy Continue Watching cleanup error:', error);
+      }
+    }
   });
 }
 
@@ -172,7 +167,14 @@ export async function getContinueWatchingItem(
   profileId: string,
   media: any,
 ): Promise<ProfileMediaItem | null> {
-  const snap = await getDoc(listDoc(userId, profileId, 'continueWatching', mediaDocId(media)));
+  const currentDocId = getContinueWatchingDocId(media);
+  let snap = await getDoc(listDoc(userId, profileId, 'continueWatching', currentDocId));
+  if (!snap.exists()) {
+    const legacyDocId = mediaDocId(media);
+    if (legacyDocId !== currentDocId) {
+      snap = await getDoc(listDoc(userId, profileId, 'continueWatching', legacyDocId));
+    }
+  }
   if (!snap.exists()) return null;
   const data = snap.data() as Record<string, unknown>;
   return normalizeMediaItem({
