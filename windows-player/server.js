@@ -3,6 +3,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { Readable } = require('stream');
+const { createDownloadManager } = require('./downloads');
 
 const PORT = Number(process.env.MAXEN_PLAYER_PORT || 47831);
 const ROOT = path.join(__dirname, 'renderer');
@@ -11,6 +12,7 @@ const hotClients = new Set();
 const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124.0.0.0 Safari/537.36';
 const CACHE_DIR = process.env.MAXEN_CACHE_DIR || path.join(process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local'), 'Maxen', 'cache');
 const SOURCE_CACHE_FILE = path.join(CACHE_DIR, 'sources.json');
+const DOWNLOAD_DIR = process.env.MAXEN_DOWNLOAD_DIR || path.join(process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local'), 'Maxen', 'downloads');
 let sourceCache = {};
 try { sourceCache = JSON.parse(fs.readFileSync(SOURCE_CACHE_FILE, 'utf8')); } catch { sourceCache = {}; }
 
@@ -35,6 +37,15 @@ async function resolveCached(kind, params, forceRefresh = false) {
   rememberSource(key, kind, result);
   return { streamUrl: playbackUrl(kind, result), isDubbed: Boolean(result.isDubbed), cached: false };
 }
+const downloads = createDownloadManager({
+  directory: DOWNLOAD_DIR,
+  resolveSource: async (kind, params) => {
+    await resolveCached(kind, params);
+    const entry = sourceCache[sourceKey(kind, params)];
+    return { streamUrl: entry.streamUrl, headers: inferredHeaders(entry.streamUrl, entry.headers) };
+  },
+  fetchSource: (url, options) => fetchWithTimeout(url, options, 30000),
+});
 
 function inferredHeaders(streamUrl, headers = {}) {
   if (Object.keys(headers).length) return headers;
@@ -47,7 +58,7 @@ function proxyUrl(streamUrl, headers = {}) {
   if (activeHeaders.Referer) params.set('referer', activeHeaders.Referer); if (activeHeaders.Origin) params.set('origin', activeHeaders.Origin);
   return `/api/stream?${params}`;
 }
-function playbackUrl(kind, result) { return kind === 'dub' ? proxyUrl(result.streamUrl, result.headers) : result.streamUrl; }
+function playbackUrl(_kind, result) { return proxyUrl(result.streamUrl, result.headers); }
 function rewriteHlsManifest(manifest, manifestUrl, headers) {
   const wrap = (value) => proxyUrl(new URL(value, manifestUrl).toString(), headers);
   return manifest.split(/\r?\n/).map((line) => {
@@ -114,7 +125,7 @@ async function resolveStream({ tmdbId, type, season = 1, episode = 1 }) {
   if (token) streamUrl.searchParams.set('token', token);
   if (expires) streamUrl.searchParams.set('expires', expires);
   streamUrl.searchParams.set('h', '1'); streamUrl.hash = 'master.m3u8';
-  return { streamUrl: streamUrl.toString() };
+  return { streamUrl: streamUrl.toString(), headers: { Referer: embedUrl, Origin: 'https://vixsrc.to', 'User-Agent': USER_AGENT } };
 }
 
 function normalizeSeriesTitle(value) {
@@ -205,10 +216,14 @@ const server = http.createServer(async (req, res) => {
       req.on('close', () => hotClients.delete(res)); return;
     }
     if (url.pathname === '/api/home') {
-      const paths = ['/trending/all/day', '/movie/popular', '/tv/popular', '/movie/top_rated', '/tv/top_rated'];
-      const data = await Promise.all(paths.map((p) => tmdb(p, { language: 'tr-TR', region: 'TR' })));
-      const names = ['Gündemdekiler', 'Popüler Filmler', 'Popüler Diziler', 'En İyi Filmler', 'En İyi Diziler'];
-      return json(res, 200, { ok: true, hero: media(data[0].results.find((x) => x.backdrop_path) || data[0].results[0]), sections: data.map((d, i) => ({ title: names[i], items: (d.results || []).filter((x) => x.poster_path).map((x) => media(x, i === 1 || i === 3 ? 'movie' : i === 2 || i === 4 ? 'tv' : undefined)) })) });
+      try {
+        const paths = ['/trending/all/day', '/movie/popular', '/tv/popular', '/movie/top_rated', '/tv/top_rated'];
+        const data = await Promise.all(paths.map((p) => tmdb(p, { language: 'tr-TR', region: 'TR' })));
+        const names = ['Gündemdekiler', 'Popüler Filmler', 'Popüler Diziler', 'En İyi Filmler', 'En İyi Diziler'];
+        return json(res, 200, { ok: true, hero: media(data[0].results.find((x) => x.backdrop_path) || data[0].results[0]), sections: data.map((d, i) => ({ title: names[i], items: (d.results || []).filter((x) => x.poster_path).map((x) => media(x, i === 1 || i === 3 ? 'movie' : i === 2 || i === 4 ? 'tv' : undefined)) })) });
+      } catch {
+        return json(res, 200, { ok: true, offline: true, downloads: downloads.list() });
+      }
     }
     if (url.pathname === '/api/discover') {
       const type = url.searchParams.get('type') === 'tv' ? 'tv' : 'movie';
@@ -231,6 +246,29 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname === '/api/resolve' || url.pathname === '/api/dub') {
       const params = Object.fromEntries(url.searchParams); const kind = url.pathname === '/api/dub' ? 'dub' : 'original';
       return json(res, 200, { ok: true, ...(await resolveCached(kind, params, params.refresh === '1')) });
+    }
+    if (url.pathname === '/api/download/options') {
+      const params = Object.fromEntries(url.searchParams);
+      return json(res, 200, { ok: true, ...(await downloads.options(params)) });
+    }
+    if (url.pathname === '/api/downloads' && req.method === 'GET') return json(res, 200, { ok: true, downloads: downloads.list() });
+    if (url.pathname === '/api/download/start' && req.method === 'POST') {
+      let body = '';
+      for await (const chunk of req) { body += chunk; if (body.length > 100_000) throw new Error('İstek çok büyük.'); }
+      return json(res, 200, { ok: true, download: downloads.start(JSON.parse(body)) });
+    }
+    if (url.pathname === '/api/download/delete' && req.method === 'POST') {
+      let body = '';
+      for await (const chunk of req) { body += chunk; if (body.length > 10_000) throw new Error('İstek çok büyük.'); }
+      await downloads.remove(JSON.parse(body).id);
+      return json(res, 200, { ok: true });
+    }
+    if (url.pathname.startsWith('/api/download/poster/') && ['GET', 'HEAD'].includes(req.method)) {
+      return downloads.servePoster(req, res, url.pathname.split('/')[4]);
+    }
+    if (url.pathname.startsWith('/api/download/file/')) {
+      const parts = url.pathname.split('/');
+      return downloads.serve(req, res, parts[4], parts[5]);
     }
     if (url.pathname === '/api/stream') return proxyStream(req, res, url.searchParams.get('url'), url.searchParams.get('referer') || '', url.searchParams.get('origin') || '');
     const file = url.pathname === '/' ? 'index.html' : url.pathname.slice(1);

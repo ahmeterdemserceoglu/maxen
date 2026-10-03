@@ -1,6 +1,6 @@
 {
   "name": "maxen-windows-player",
-  "version": "2.6.0",
+  "version": "2.6.2",
   "description": "Maxen Windows masaüstü oynatıcısı",
   "author": "Laze Studio",
   "license": "UNLICENSED",
@@ -8,7 +8,7 @@
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "build:windows": "electron-builder --win portable --x64"
+    "build:windows": "electron-builder --win nsis --x64"
   },
   "devDependencies": {
     "electron": "44.4.5",
@@ -23,7 +23,9 @@
     },
     "files": [
       "main.js",
+      "preload.js",
       "server.js",
+      "downloads.js",
       "renderer/**/*",
       "package.json"
     ],
@@ -31,11 +33,17 @@
       "icon": "../assets/images/maxen.png",
       "target": [
         {
-          "target": "portable",
+          "target": "nsis",
           "arch": ["x64"]
         }
       ],
-      "artifactName": "Maxen-${version}-Windows-x64.${ext}"
+      "artifactName": "Maxen-Setup-${version}-Windows-x64.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
     }
   }
 }

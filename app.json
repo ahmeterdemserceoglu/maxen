@@ -2,7 +2,7 @@
   "expo": {
     "name": "maxen",
     "slug": "maxen",
-    "version": "10.6.6",
+    "version": "10.6.8",
     "icon": "./assets/images/maxen.png",
     "orientation": "default",
     "scheme": "maxen",
@@ -10,7 +10,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.maxen.app",
-      "buildNumber": "21",
+      "buildNumber": "23",
       "infoPlist": {
         "UIBackgroundModes": [
           "audio"
@@ -33,7 +33,7 @@
     },
     "android": {
       "package": "com.maxen.app",
-      "versionCode": 24,
+      "versionCode": 26,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/android-icon-foreground.png",
         "backgroundColor": "#FAFAF9",
@@ -48,8 +48,6 @@
         "ACCESS_NETWORK_STATE",
         "WAKE_LOCK",
         "VIBRATE",
-        "FOREGROUND_SERVICE",
-        "FOREGROUND_SERVICE_DATA_SYNC",
         "POST_NOTIFICATIONS"
       ]
     },

@@ -131,7 +131,7 @@ export function SettingsView({ activeProfile, onChangeProfile }: SettingsViewPro
     { icon: 'mail-outline' as const, label: 'Hesap', sub: user?.email ?? '', isAccount: true },
     { icon: 'color-palette-outline' as const, label: 'Görünüm', sub: isOledMode ? 'OLED Saf Siyah (#000000)' : 'Koyu Tema (#141414)', isAppearance: true },
     { icon: 'language-outline' as const, label: 'Dil', sub: currentLang === 'en' ? 'English (İngilizce)' : 'Türkçe', isLanguage: true },
-    { icon: 'information-circle-outline' as const, label: 'Uygulama Hakkında', sub: 'Maxen v10.5.0 • Bilgi & Lisans', isAbout: true },
+    { icon: 'information-circle-outline' as const, label: 'Uygulama Hakkında', sub: 'Maxen v10.6.8 • Bilgi & Lisans', isAbout: true },
   ];
 
   return (
@@ -472,7 +472,7 @@ export function SettingsView({ activeProfile, onChangeProfile }: SettingsViewPro
               <View style={{ width: 60, height: 60, borderRadius: 16, backgroundColor: '#E50914', justifyContent: 'center', alignItems: 'center', marginBottom: 10 }}>
                 <Ionicons name="film" size={32} color="#fff" />
               </View>
-              <ThemedText style={{ fontSize: 22, fontWeight: '900', color: '#fff' }}>Maxen v10.5.0</ThemedText>
+              <ThemedText style={{ fontSize: 22, fontWeight: '900', color: '#fff' }}>Maxen v10.6.8</ThemedText>
               <ThemedText style={{ fontSize: Platform.isTV ? 16 : 13, color: '#aaa', marginTop: 4 }}>Sinema Deneyimini Her Ekrana Taşıyın</ThemedText>
             </View>
 
