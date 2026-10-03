@@ -57,12 +57,12 @@ function createDownloadManager({ directory, resolveSource, fetchSource }) {
       let entry = readIndex(path.join(location, 'metadata.json'))?.[0];
       const file = entry?.file || (fs.existsSync(path.join(location, 'master.m3u8')) ? 'master.m3u8' : fs.readdirSync(location).find((name) => /^video\.[a-z0-9]+$/i.test(name)));
       if (!file || !fs.existsSync(path.join(location, file))) return [];
-      if (!entry) entry = { id: folder.name, item: { id: folder.name, type: 'movie', title: 'Kurtarılan indirme' }, season: 1, episode: 1, audioLabel: 'İndirilen ses', subtitleLabel: '' };
+      if (!entry) entry = { id: folder.name, item: { id: folder.name, type: 'movie', title: 'Kayıtlı İçerik' }, season: 1, episode: 1, audioLabel: 'Orijinal Ses', subtitleLabel: '' };
       return [{ ...entry, id: folder.name, file, status: 'complete', progress: 100 }];
     });
   }
   let entries = readIndex(indexFile) ?? readIndex(backupFile) ?? recoverFolders();
-  for (const entry of entries) if (entry.status === 'downloading') { entry.status = 'failed'; entry.error = 'Uygulama kapandı. İndirmeyi yeniden başlatın.'; }
+  for (const entry of entries) if (entry.status === 'downloading') { entry.status = 'failed'; entry.error = 'Uygulama kapatıldı. İndirmeyi yeniden başlatabilirsiniz.'; }
   function save() {
     fs.mkdirSync(directory, { recursive: true });
     const payload = JSON.stringify(entries, null, 2);
@@ -77,12 +77,14 @@ function createDownloadManager({ directory, resolveSource, fetchSource }) {
   }
   save();
 
-  async function request(url, headers = {}, range = '') {
-    const response = await fetchSource(url, { headers: { ...headers, ...(range ? { Range: range } : {}) } });
+  const activeControllers = new Map();
+
+  async function request(url, headers = {}, range = '', signal = null) {
+    const response = await fetchSource(url, { headers: { ...headers, ...(range ? { Range: range } : {}) }, ...(signal ? { signal } : {}) });
     if (!response.ok) throw new Error(`Kaynak yanıtı: ${response.status}`);
     return response;
   }
-  async function readText(url, headers) { return (await request(url, headers)).text(); }
+  async function readText(url, headers, signal = null) { return (await request(url, headers, '', signal)).text(); }
 
   async function inspectSource(source) {
     const url = source.streamUrl;
@@ -109,14 +111,33 @@ function createDownloadManager({ directory, resolveSource, fetchSource }) {
     return { token, audio, subtitles, dubAvailable: available.some((value) => value.kind === 'dub') };
   }
 
-  async function writeResource(url, headers, destination, range = '') {
-    const response = await request(url, headers, range);
-    if (!response.body) throw new Error('Kaynak verisi boş.');
-    await pipeline(Readable.fromWeb(response.body), fs.createWriteStream(destination));
+  async function writeResource(url, headers, destination, range = '', maxRetries = 3, signal = null) {
+    let lastError;
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      if (signal?.aborted) throw new Error('İndirme iptal edildi');
+      try {
+        const response = await request(url, headers, range, signal);
+        if (!response.body) throw new Error('Kaynak verisi boş.');
+        await pipeline(Readable.fromWeb(response.body), fs.createWriteStream(destination), { signal: signal || undefined });
+        return;
+      } catch (err) {
+        if (signal?.aborted || err.name === 'AbortError') {
+          try { if (fs.existsSync(destination)) fs.unlinkSync(destination); } catch {}
+          throw new Error('İndirme iptal edildi');
+        }
+        lastError = err;
+        try { if (fs.existsSync(destination)) fs.unlinkSync(destination); } catch {}
+        if (attempt < maxRetries) {
+          const delay = attempt * 800;
+          await new Promise((resolve) => setTimeout(resolve, delay));
+        }
+      }
+    }
+    throw lastError || new Error(`Kaynak indirilemedi (${maxRetries} deneme): ${url}`);
   }
 
-  async function downloadPlaylist(url, headers, folder, prefix, tick) {
-    const text = await readText(url, headers);
+  async function downloadPlaylist(url, headers, folder, prefix, tick, signal = null) {
+    const text = await readText(url, headers, signal);
     if (!/#EXT-X-ENDLIST/.test(text)) throw new Error('Bu yayın canlı veya tamamlanmamış; çevrimdışı indirilemez.');
     if (/#EXT-X-BYTERANGE|BYTERANGE=/.test(text)) throw new Error('Bu yayının parça biçimi çevrimdışı indirmeyi desteklemiyor.');
     if (/METHOD=(?:SAMPLE-AES|SAMPLE-AES-CTR|SAMPLE-AES-CENC)/.test(text)) throw new Error('Korumalı yayın çevrimdışı indirilemez.');
@@ -141,12 +162,17 @@ function createDownloadManager({ directory, resolveSource, fetchSource }) {
       return name;
     });
     if (!tasks.length) throw new Error('Yayında indirilebilir parça bulunamadı.');
+    tick?.(0, tasks.length, 0);
     let cursor = 0;
     const workers = Array.from({ length: Math.min(4, tasks.length) }, async () => {
       while (cursor < tasks.length) {
+        if (signal?.aborted) throw new Error('İndirme iptal edildi');
         const task = tasks[cursor++];
-        await writeResource(task.url, headers, path.join(folder, task.name));
-        tick();
+        const dest = path.join(folder, task.name);
+        await writeResource(task.url, headers, dest, '', 3, signal);
+        let bytes = 0;
+        try { bytes = fs.statSync(dest).size; } catch {}
+        tick?.(1, 0, bytes);
       }
     });
     await Promise.all(workers);
@@ -156,12 +182,47 @@ function createDownloadManager({ directory, resolveSource, fetchSource }) {
   }
 
   async function run(entry, source, info, selectedAudio, selectedSubtitle) {
+    const controller = new AbortController();
+    activeControllers.set(entry.id, controller);
+    const { signal } = controller;
     const folder = path.join(directory, entry.id);
+    const startedAt = Date.now();
+    let totalBytes = 0;
+    entry.startedAt = startedAt;
+    entry.downloadedParts = 0;
+    entry.totalParts = 0;
+    entry.downloadedBytes = 0;
+    entry.speed = 0;
+    entry.eta = null;
+
+    const tick = (doneCount = 0, addedTotal = 0, bytes = 0) => {
+      if (signal.aborted) return;
+      if (addedTotal > 0) entry.totalParts = (entry.totalParts || 0) + addedTotal;
+      if (doneCount > 0) entry.downloadedParts = (entry.downloadedParts || 0) + doneCount;
+      if (bytes > 0) {
+        totalBytes += bytes;
+        entry.downloadedBytes = totalBytes;
+      }
+      const elapsedSec = (Date.now() - startedAt) / 1000;
+      if (elapsedSec > 0.5 && totalBytes > 0) {
+        entry.speed = Math.round(totalBytes / elapsedSec);
+        if (entry.totalParts && entry.downloadedParts) {
+          const partsRemaining = Math.max(0, entry.totalParts - entry.downloadedParts);
+          const secPerPart = elapsedSec / entry.downloadedParts;
+          entry.eta = Math.round(partsRemaining * secPerPart);
+        }
+      }
+    };
+
     try {
       await fsp.mkdir(folder, { recursive: true });
       if (info.kind === 'file') {
         const name = `video${extension(source.streamUrl, '.mp4')}`;
-        await writeResource(source.streamUrl, source.headers, path.join(folder, name));
+        const dest = path.join(folder, name);
+        entry.totalParts = 1;
+        await writeResource(source.streamUrl, source.headers, dest, '', 3, signal);
+        entry.downloadedParts = 1;
+        try { entry.downloadedBytes = fs.statSync(dest).size; } catch {}
         entry.file = name;
         entry.progress = 100;
       } else {
@@ -169,10 +230,9 @@ function createDownloadManager({ directory, resolveSource, fetchSource }) {
         const videoUrl = variant?.url || source.streamUrl;
         const audioTrack = info.audio.find((track) => track.id === selectedAudio);
         const subtitleTrack = info.subtitles.find((track) => track.id === selectedSubtitle);
-        const tick = () => { entry.downloadedParts = (entry.downloadedParts || 0) + 1; };
-        const videoList = await downloadPlaylist(videoUrl, source.headers, folder, 'video', tick);
-        const audioList = audioTrack ? await downloadPlaylist(audioTrack.url, source.headers, folder, 'audio', tick) : null;
-        const subtitleList = subtitleTrack ? await downloadPlaylist(subtitleTrack.url, source.headers, folder, 'subtitle', tick) : null;
+        const videoList = await downloadPlaylist(videoUrl, source.headers, folder, 'video', tick, signal);
+        const audioList = audioTrack ? await downloadPlaylist(audioTrack.url, source.headers, folder, 'audio', tick, signal) : null;
+        const subtitleList = subtitleTrack ? await downloadPlaylist(subtitleTrack.url, source.headers, folder, 'subtitle', tick, signal) : null;
         const codec = variant?.CODECS ? `,CODECS="${variant.CODECS}"` : '';
         const lines = ['#EXTM3U', '#EXT-X-VERSION:3'];
         if (audioList) lines.push(`#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="offline-audio",NAME="${(audioTrack.NAME || 'Ses').replace(/"/g, '')}",LANGUAGE="${audioTrack.LANGUAGE || 'und'}",DEFAULT=YES,AUTOSELECT=YES,URI="${audioList.name}"`);
@@ -183,11 +243,17 @@ function createDownloadManager({ directory, resolveSource, fetchSource }) {
         entry.progress = 100;
       }
       entry.status = 'complete';
+      entry.speed = 0;
+      entry.eta = null;
       entry.completedAt = Date.now();
     } catch (error) {
       entry.status = 'failed';
-      entry.error = error.message || String(error);
-      await fsp.rm(folder, { recursive: true, force: true });
+      entry.speed = 0;
+      entry.eta = null;
+      entry.error = (signal.aborted || error.message?.includes('iptal edildi')) ? 'İndirme iptal edildi' : (error.message || String(error));
+      await fsp.rm(folder, { recursive: true, force: true }).catch(() => {});
+    } finally {
+      activeControllers.delete(entry.id);
     }
     save();
   }
@@ -210,7 +276,30 @@ function createDownloadManager({ directory, resolveSource, fetchSource }) {
     return entry;
   }
 
-  function list() { return entries.map((entry) => ({ ...entry })); }
+  function getFolderSize(dir) {
+    let size = 0;
+    try {
+      const items = fs.readdirSync(dir, { withFileTypes: true });
+      for (const item of items) {
+        const itemPath = path.join(dir, item.name);
+        if (item.isFile()) {
+          try { size += fs.statSync(itemPath).size; } catch {}
+        }
+      }
+    } catch {}
+    return size;
+  }
+
+  function list() {
+    return entries.map((entry) => {
+      let size = entry.downloadedBytes || 0;
+      if (entry.status === 'complete' && !size) {
+        size = getFolderSize(path.join(directory, entry.id));
+        entry.downloadedBytes = size;
+      }
+      return { ...entry, size };
+    });
+  }
   async function servePoster(req, res, id) {
     const entry = entries.find((value) => value.id === id && value.status === 'complete');
     let posterUrl;
@@ -232,14 +321,46 @@ function createDownloadManager({ directory, resolveSource, fetchSource }) {
       if (req.method === 'HEAD') res.end(); else fs.createReadStream(file).pipe(res);
     } catch { res.writeHead(404); res.end(); }
   }
+
+  async function cancel(id) {
+    const entry = entries.find((e) => e.id === id);
+    if (!entry) throw new Error('İndirme bulunamadı.');
+    if (entry.status === 'downloading') {
+      const controller = activeControllers.get(id);
+      if (controller) controller.abort();
+      entry.status = 'failed';
+      entry.error = 'İndirme iptal edildi';
+      entry.speed = 0;
+      entry.eta = null;
+      await fsp.rm(path.join(directory, id), { recursive: true, force: true }).catch(() => {});
+      save();
+    }
+    return entry;
+  }
+
   async function remove(id) {
     const index = entries.findIndex((entry) => entry.id === id);
     if (index < 0) throw new Error('İndirme bulunamadı.');
-    if (entries[index].status === 'downloading') throw new Error('Devam eden indirme bitmeden silinemez.');
-    await fsp.rm(path.join(directory, id), { recursive: true, force: true });
+    const entry = entries[index];
+    if (entry.status === 'downloading') {
+      const controller = activeControllers.get(id);
+      if (controller) controller.abort();
+    }
+    await fsp.rm(path.join(directory, id), { recursive: true, force: true }).catch(() => {});
     entries.splice(index, 1);
     save();
   }
+
+  async function clearFailed() {
+    const failedList = entries.filter((entry) => entry.status === 'failed');
+    for (const entry of failedList) {
+      await fsp.rm(path.join(directory, entry.id), { recursive: true, force: true }).catch(() => {});
+    }
+    entries = entries.filter((entry) => entry.status !== 'failed');
+    save();
+    return { removed: failedList.length };
+  }
+
   function serve(req, res, id, name) {
     const entry = entries.find((value) => value.id === id && value.status === 'complete');
     if (!entry || !/^[a-zA-Z0-9._-]+$/.test(name)) { res.writeHead(404); res.end(); return; }
@@ -255,7 +376,7 @@ function createDownloadManager({ directory, resolveSource, fetchSource }) {
     res.writeHead(range ? 206 : 200, { 'Content-Type': mime, 'Content-Length': end - start + 1, 'Accept-Ranges': 'bytes', 'Access-Control-Allow-Origin': '*', ...(range ? { 'Content-Range': `bytes ${start}-${end}/${stat.size}` } : {}) });
     fs.createReadStream(file, { start, end }).pipe(res);
   }
-  return { options, start, list, remove, serve, servePoster, masterInfo };
+  return { directory, options, start, list, cancel, remove, clearFailed, serve, servePoster, masterInfo };
 }
 
-module.exports = { createDownloadManager, masterInfo, attributes };
+module.exports = { createDownloadManager, masterInfo };

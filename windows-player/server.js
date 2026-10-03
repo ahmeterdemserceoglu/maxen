@@ -68,15 +68,42 @@ function rewriteHlsManifest(manifest, manifestUrl, headers) {
   }).join('\n');
 }
 async function proxyStream(req, res, targetUrl, referer, origin) {
-  const headers = { 'User-Agent': USER_AGENT, Accept: req.headers.accept || '*/*' }; if (referer) headers.Referer = referer; if (origin) headers.Origin = origin; if (req.headers.range) headers.Range = req.headers.range;
-  const response = await fetchWithTimeout(targetUrl, { headers }, 20000); const contentType = response.headers.get('content-type') || '';
-  if (/mpegurl|m3u8/i.test(contentType) || /\.m3u8(?:$|[?#])/i.test(targetUrl)) {
-    const manifest = await response.text(); const rewritten = rewriteHlsManifest(manifest, response.url || targetUrl, { Referer: referer, Origin: origin, 'User-Agent': USER_AGENT });
-    res.writeHead(response.ok ? 200 : response.status, { 'Content-Type': 'application/vnd.apple.mpegurl', 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store' }); return res.end(rewritten);
+  const headers = { 'User-Agent': USER_AGENT, Accept: req.headers.accept || '*/*' };
+  if (referer) headers.Referer = referer;
+  if (origin) headers.Origin = origin;
+  if (req.headers.range) headers.Range = req.headers.range;
+
+  let response;
+  try {
+    response = await fetchWithTimeout(targetUrl, { headers }, 20000);
+  } catch (error) {
+    if (!res.headersSent) {
+      res.writeHead(502, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+      res.end(JSON.stringify({ ok: false, error: 'Kaynak sunucusuna erişilemedi: ' + (error?.message || '') }));
+    }
+    return;
   }
+
+  const contentType = response.headers.get('content-type') || '';
+  if (/mpegurl|m3u8/i.test(contentType) || /\.m3u8(?:$|[?#])/i.test(targetUrl)) {
+    const manifest = await response.text();
+    const rewritten = rewriteHlsManifest(manifest, response.url || targetUrl, { Referer: referer, Origin: origin, 'User-Agent': USER_AGENT });
+    res.writeHead(response.ok ? 200 : response.status, { 'Content-Type': 'application/vnd.apple.mpegurl', 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store' });
+    return res.end(rewritten);
+  }
+
   const outputHeaders = { 'Content-Type': contentType || 'application/octet-stream', 'Access-Control-Allow-Origin': '*', 'Accept-Ranges': response.headers.get('accept-ranges') || 'bytes', 'Cache-Control': 'no-store' };
-  for (const name of ['content-length', 'content-range']) { const value = response.headers.get(name); if (value) outputHeaders[name] = value; }
-  res.writeHead(response.status, outputHeaders); if (!response.body) return res.end(); Readable.fromWeb(response.body).pipe(res);
+  for (const name of ['content-length', 'content-range']) {
+    const value = response.headers.get(name);
+    if (value) outputHeaders[name] = value;
+  }
+  res.writeHead(response.status, outputHeaders);
+  if (!response.body) return res.end();
+
+  const stream = Readable.fromWeb(response.body);
+  stream.on('error', () => { try { res.destroy(); } catch {} });
+  res.on('close', () => { try { stream.destroy(); } catch {} });
+  stream.pipe(res);
 }
 
 async function fetchWithTimeout(url, options = {}, timeoutMs = 14000) {
@@ -102,6 +129,7 @@ function media(item, forcedType) {
     originalLanguage: item.original_language || '',
     overview: item.overview || '', year: (item.release_date || item.first_air_date || '').slice(0, 4),
     rating: Number(item.vote_average || 0).toFixed(1),
+    genre_ids: item.genre_ids || [],
     poster: item.poster_path ? `https://image.tmdb.org/t/p/w500${item.poster_path}` : null,
     backdrop: item.backdrop_path ? `https://image.tmdb.org/t/p/original${item.backdrop_path}` : null,
   };
@@ -151,6 +179,33 @@ function extractStream(html, iframeUrl = '') {
   const streamUrl = normalized.match(/(?:file|src)\s*[:=]\s*['"]([^'"]+\.(?:m3u8|mp4)[^'"]*)['"]/i)?.[1] || normalized.match(/https?:\/\/[^'"\s<>]+\.(?:m3u8|mp4)[^'"\s<>]*/i)?.[0];
   if (!streamUrl) return null; let providerOrigin = 'https://sezonlukdizi.cc'; try { providerOrigin = new URL(iframeUrl).origin; } catch {}
   return { streamUrl, headers: { Referer: `${providerOrigin}/`, Origin: providerOrigin, 'User-Agent': USER_AGENT } };
+}
+
+async function checkDubAvailability({ tmdbId, title, season = 1, episode = 1 }) {
+  const details = await tmdb(`/tv/${tmdbId}`, { language: 'tr-TR', append_to_response: 'external_ids' });
+  const requestedTitles = [details.original_name, title, details.name].filter(Boolean);
+  const terms = [details.external_ids?.imdb_id, ...requestedTitles].filter((value, index, list) => value && list.indexOf(value) === index);
+  const headers = { 'User-Agent': USER_AGENT, Referer: 'https://sezonlukdizi.cc/', 'X-Requested-With': 'XMLHttpRequest' };
+  const searches = await Promise.allSettled(terms.map(async (term) => {
+    const response = await fetchWithTimeout('https://sezonlukdizi.cc/ajax/arama.asp', { method: 'POST', headers: { ...headers, 'Content-Type': 'application/x-www-form-urlencoded' }, body: `q=${encodeURIComponent(term)}` }, 5000);
+    const found = response.ok ? await response.json().catch(() => null) : null;
+    const list = found?.results?.diziler?.results || [];
+    if (!Array.isArray(list) || !list.length) return null;
+    const exact = list.find((item) => requestedTitles.some((requested) => isLikelySeriesMatch(item?.title || item?.name || '', requested)));
+    return (String(term).startsWith('tt') ? list[0] : exact)?.url || null;
+  }));
+  const seriesUrl = searches.find((result) => result.status === 'fulfilled' && result.value)?.value;
+  if (!seriesUrl) return { available: false };
+  const slug = seriesUrl.match(/\/diziler\/([a-zA-Z0-9_-]+)\.html/)?.[1] || seriesUrl.replace(/^\/diziler\/|\.html$/g, '');
+  const candidate = `https://sezonlukdizi.cc/${slug}/dublaj/${season}-sezon-${episode}-bolum.html`;
+  try {
+    const response = await fetchWithTimeout(candidate, { headers: { 'User-Agent': USER_AGENT, Referer: 'https://sezonlukdizi.cc/' } }, 5000);
+    const html = response.ok ? await response.text() : '';
+    const hasDub = /data-dil\s*=\s*["']0["']/i.test(html) && /dublaj/i.test(html);
+    return { available: Boolean(hasDub) };
+  } catch {
+    return { available: false };
+  }
 }
 
 async function resolveDub({ tmdbId, title, season = 1, episode = 1 }, excludeProvider = '') {
@@ -225,10 +280,97 @@ const server = http.createServer(async (req, res) => {
         return json(res, 200, { ok: true, offline: true, downloads: downloads.list() });
       }
     }
+    if (url.pathname === '/api/catalog') {
+      const type = url.searchParams.get('type') === 'tv' ? 'tv' : 'movie';
+      try {
+        if (type === 'tv') {
+          const paths = ['/trending/tv/week', '/tv/popular', '/tv/top_rated', '/tv/on_the_air'];
+          const data = await Promise.all(paths.map((p) => tmdb(p, { language: 'tr-TR', region: 'TR' })));
+          const names = [
+            { title: 'Gündemdeki Diziler', subtitle: 'Haftanın en çok konuşulan ve izlenen popüler dizileri' },
+            { title: 'Popüler Diziler', subtitle: 'Geniş izleyici kitlesine sahip favori diziler' },
+            { title: 'Başyapıt Diziler', subtitle: 'Tüm zamanların en yüksek puanlı kült serileri' },
+            { title: 'Yeni Sezonlar & Yayındakiler', subtitle: 'Şu an devam eden ve yeni bölümleri yayınlanan diziler' }
+          ];
+          const heroItem = media(data[0].results.find((x) => x.backdrop_path) || data[0].results[0], 'tv');
+          return json(res, 200, {
+            ok: true,
+            type: 'tv',
+            title: 'Diziler',
+            hero: heroItem,
+            sections: data.map((d, i) => ({
+              title: names[i].title,
+              subtitle: names[i].subtitle,
+              items: (d.results || []).filter((x) => x.poster_path).map((x) => media(x, 'tv'))
+            }))
+          });
+        } else {
+          const paths = ['/trending/movie/week', '/movie/popular', '/movie/top_rated', '/movie/now_playing'];
+          const data = await Promise.all(paths.map((p) => tmdb(p, { language: 'tr-TR', region: 'TR' })));
+          const names = [
+            { title: 'Gündemdeki Filmler', subtitle: 'Haftanın en çok izlenen ve aranan sinema filmleri' },
+            { title: 'Popüler Filmler', subtitle: 'Dünya çapında en çok ilgi gören sinema yapımları' },
+            { title: 'Eleştirmenlerden Tam Not Alanlar', subtitle: 'En yüksek puanlı unutulmaz sinema başyapıtları' },
+            { title: 'Vizyondaki Filmler', subtitle: 'Sinemalarda ve dijital platformlarda yeni gösterime girenler' }
+          ];
+          const heroItem = media(data[0].results.find((x) => x.backdrop_path) || data[0].results[0], 'movie');
+          return json(res, 200, {
+            ok: true,
+            type: 'movie',
+            title: 'Filmler',
+            hero: heroItem,
+            sections: data.map((d, i) => ({
+              title: names[i].title,
+              subtitle: names[i].subtitle,
+              items: (d.results || []).filter((x) => x.poster_path).map((x) => media(x, 'movie'))
+            }))
+          });
+        }
+      } catch (err) {
+        return json(res, 500, { ok: false, error: `Katalog alınamadı: ${err.message}` });
+      }
+    }
     if (url.pathname === '/api/discover') {
       const type = url.searchParams.get('type') === 'tv' ? 'tv' : 'movie';
-      const data = await tmdb(`/discover/${type}`, { language: 'tr-TR', region: 'TR', sort_by: 'popularity.desc', page: url.searchParams.get('page') || 1 });
-      return json(res, 200, { ok: true, title: type === 'tv' ? 'Diziler' : 'Filmler', results: (data.results || []).filter((x) => x.poster_path).map((x) => media(x, type)) });
+      const page = Math.max(1, Number(url.searchParams.get('page') || 1));
+      const genre = url.searchParams.get('genre') || '';
+      const sortBy = url.searchParams.get('sort_by') || 'popularity.desc';
+      const params = { language: 'tr-TR', region: 'TR', sort_by: sortBy, page };
+      if (sortBy.startsWith('vote_average')) {
+        params['vote_count.gte'] = '60';
+      }
+      if (genre) params.with_genres = genre;
+      const data = await tmdb(`/discover/${type}`, params);
+      const results = (data.results || []).filter((x) => x.poster_path).map((x) => media(x, type));
+      const hero = results.find((x) => x.backdrop) || results[0] || null;
+      return json(res, 200, {
+        ok: true,
+        title: type === 'tv' ? 'Diziler' : 'Filmler',
+        page,
+        totalPages: Math.min(500, data.total_pages || 1),
+        hero,
+        results
+      });
+    }
+    if (url.pathname === '/api/trailer') {
+      const type = url.searchParams.get('type') === 'tv' ? 'tv' : 'movie';
+      const id = url.searchParams.get('id');
+      if (!id) return json(res, 400, { ok: false, error: 'ID eksik' });
+      try {
+        let data = await tmdb(`/${type}/${id}/videos`, { language: 'tr-TR' });
+        let list = (data.results || []).filter((v) => v.site === 'YouTube');
+        if (!list.length) {
+          data = await tmdb(`/${type}/${id}/videos`, { language: 'en-US' });
+          list = (data.results || []).filter((v) => v.site === 'YouTube');
+        }
+        const trailer = list.find((v) => v.type === 'Trailer') || list.find((v) => v.type === 'Teaser') || list[0];
+        if (trailer && trailer.key) {
+          return json(res, 200, { ok: true, key: trailer.key, name: trailer.name });
+        }
+        return json(res, 404, { ok: false, error: 'Bu içerik için YouTube fragmanı bulunamadı.' });
+      } catch (err) {
+        return json(res, 500, { ok: false, error: `Fragman alınamadı: ${err.message}` });
+      }
     }
     if (url.pathname === '/api/search') {
       const data = await tmdb('/search/multi', { query: url.searchParams.get('q') || '', language: 'tr-TR', include_adult: false });
@@ -243,6 +385,15 @@ const server = http.createServer(async (req, res) => {
       const data = await tmdb(`/tv/${url.searchParams.get('id')}/season/${url.searchParams.get('season')}`, { language: 'tr-TR' });
       return json(res, 200, { ok: true, episodes: (data.episodes || []).map((x) => ({ number: x.episode_number, title: x.name, overview: x.overview, runtime: x.runtime, airDate: x.air_date, still: x.still_path ? `https://image.tmdb.org/t/p/w500${x.still_path}` : null })) });
     }
+    if (url.pathname === '/api/dub/check') {
+      const params = Object.fromEntries(url.searchParams);
+      try {
+        const result = await checkDubAvailability(params);
+        return json(res, 200, { ok: true, ...result });
+      } catch {
+        return json(res, 200, { ok: true, available: false });
+      }
+    }
     if (url.pathname === '/api/resolve' || url.pathname === '/api/dub') {
       const params = Object.fromEntries(url.searchParams); const kind = url.pathname === '/api/dub' ? 'dub' : 'original';
       return json(res, 200, { ok: true, ...(await resolveCached(kind, params, params.refresh === '1')) });
@@ -251,11 +402,21 @@ const server = http.createServer(async (req, res) => {
       const params = Object.fromEntries(url.searchParams);
       return json(res, 200, { ok: true, ...(await downloads.options(params)) });
     }
-    if (url.pathname === '/api/downloads' && req.method === 'GET') return json(res, 200, { ok: true, downloads: downloads.list() });
+    if (url.pathname === '/api/downloads' && req.method === 'GET') return json(res, 200, { ok: true, downloads: downloads.list(), directory: downloads.directory });
     if (url.pathname === '/api/download/start' && req.method === 'POST') {
       let body = '';
       for await (const chunk of req) { body += chunk; if (body.length > 100_000) throw new Error('İstek çok büyük.'); }
       return json(res, 200, { ok: true, download: downloads.start(JSON.parse(body)) });
+    }
+    if (url.pathname === '/api/download/cancel' && req.method === 'POST') {
+      let body = '';
+      for await (const chunk of req) { body += chunk; if (body.length > 10_000) throw new Error('İstek çok büyük.'); }
+      await downloads.cancel(JSON.parse(body).id);
+      return json(res, 200, { ok: true });
+    }
+    if (url.pathname === '/api/download/clear-failed' && req.method === 'POST') {
+      const result = await downloads.clearFailed();
+      return json(res, 200, { ok: true, removed: result.removed });
     }
     if (url.pathname === '/api/download/delete' && req.method === 'POST') {
       let body = '';
@@ -280,14 +441,28 @@ const server = http.createServer(async (req, res) => {
   } catch (error) { json(res, 500, { ok: false, error: error?.name === 'AbortError' ? 'Kaynak zaman aşımına uğradı' : error?.message || 'İşlem başarısız' }); }
 });
 
-function startServer() {
+function startServer(preferredPort = PORT) {
   if (server.listening) return Promise.resolve(server.address());
   return new Promise((resolve, reject) => {
-    server.once('error', reject);
-    server.listen(PORT, '127.0.0.1', () => {
-      server.removeListener('error', reject);
-      resolve(server.address());
-    });
+    const tryListen = (portToTry, allowFallback = true) => {
+      const onError = (err) => {
+        server.removeListener('listening', onListening);
+        if (err.code === 'EADDRINUSE' && allowFallback && portToTry !== 0) {
+          console.warn(`[Maxen Server] Port ${portToTry} meşgul, boş bir port deneniyor...`);
+          tryListen(0, false);
+        } else {
+          reject(err);
+        }
+      };
+      const onListening = () => {
+        server.removeListener('error', onError);
+        resolve(server.address());
+      };
+      server.once('error', onError);
+      server.once('listening', onListening);
+      server.listen(portToTry, '127.0.0.1');
+    };
+    tryListen(preferredPort, true);
   });
 }
 

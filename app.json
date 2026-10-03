@@ -2,7 +2,7 @@
   "expo": {
     "name": "maxen",
     "slug": "maxen",
-    "version": "10.6.9",
+    "version": "10.6.10",
     "icon": "./assets/images/maxen.png",
     "orientation": "default",
     "scheme": "maxen",
@@ -10,7 +10,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.maxen.app",
-      "buildNumber": "23",
+      "buildNumber": "24",
       "infoPlist": {
         "UIBackgroundModes": [
           "audio"
@@ -33,7 +33,7 @@
     },
     "android": {
       "package": "com.maxen.app",
-      "versionCode": 27,
+      "versionCode": 28,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/android-icon-foreground.png",
         "backgroundColor": "#FAFAF9",
