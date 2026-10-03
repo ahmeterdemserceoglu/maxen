@@ -204,6 +204,13 @@ async function downloadHls(run: Run, folder: string) {
 }
 async function downloadDirect(run: Run, folder: string) {
   const item = run.item, uri = folder + 'video.mp4';
+  if (item.resumeData) {
+    const partial = await FileSystem.getInfoAsync(uri);
+    if (!partial.exists || (Platform.OS === 'android' && /^\d+$/.test(item.resumeData) && partial.size !== Number(item.resumeData))) {
+      item.resumeData = undefined;
+    }
+  }
+  assertActive(run);
   if (!item.resumeData) { item.progress = 0; item.totalBytes = 0; item.downloadedBytes = 0; }
   const job = FileSystem.createDownloadResumable(item.streamUrl, uri, { headers: headersFor(item) }, progress => {
     if (run.stopped) return;
@@ -221,7 +228,12 @@ async function downloadDirect(run: Run, folder: string) {
     const contentType = Object.entries(result.headers || {}).find(([k]) => k.toLowerCase() === 'content-type')?.[1] || '';
     if (/text\/|json|mpegurl/i.test(contentType)) throw new Error('Kaynak video yerine geçersiz bir yanıt döndürdü.');
     const receipt = await checkedReceipt(uri);
-    if (item.totalBytes > 0 && receipt.size !== item.totalBytes) {
+    const responseHeader = (name: string) => Object.entries(result.headers || {}).find(([k]) => k.toLowerCase() === name)?.[1];
+    const rangeTotal = responseHeader('content-range')?.match(/\/(\d+)$/)?.[1];
+    const length = responseHeader('content-length');
+    const offset = item.resumeData && /^\d+$/.test(item.resumeData) ? Number(item.resumeData) : 0;
+    const expectedSize = rangeTotal ? Number(rangeTotal) : length && (!item.resumeData || Platform.OS === 'android') ? Number(length) + offset : 0;
+    if (expectedSize > 0 && receipt.size !== expectedSize) {
       throw new Error('Video dosyası tam olarak indirilemedi. Lütfen tekrar deneyin.');
     }
     item.localUri = uri; item.checksum = receipt.checksum; item.downloadedBytes = item.totalBytes = receipt.size;

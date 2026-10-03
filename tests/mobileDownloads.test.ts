@@ -91,7 +91,7 @@ test('pause saves native resume data; resume calls resumeAsync', async () => {
   let release!: () => void;
   native.createDownloadResumable.mockImplementationOnce((url: string, uri: string) => ({
     downloadAsync: () => new Promise(resolve => { release = () => resolve(undefined); }),
-    pauseAsync: async () => { release(); return { resumeData: '42' }; },
+    pauseAsync: async () => { files.set(uri, 'x'.repeat(42)); release(); return { resumeData: '42' }; },
   }));
   await service.queueDownload({ ...media, streamUrl: 'https://cdn.test/video.mp4' }); await settled();
   await service.pauseDownload(media.id);
