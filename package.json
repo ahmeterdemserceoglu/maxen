@@ -1,6 +1,6 @@
 {
   "name": "maxen",
-  "version": "10.6.8",
+  "version": "10.6.9",
   "main": "expo-router/entry",
   "scripts": {
     "start": "expo start",

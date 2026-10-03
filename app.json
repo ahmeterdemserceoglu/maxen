@@ -2,7 +2,7 @@
   "expo": {
     "name": "maxen",
     "slug": "maxen",
-    "version": "10.6.8",
+    "version": "10.6.9",
     "icon": "./assets/images/maxen.png",
     "orientation": "default",
     "scheme": "maxen",
@@ -33,7 +33,7 @@
     },
     "android": {
       "package": "com.maxen.app",
-      "versionCode": 26,
+      "versionCode": 27,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/android-icon-foreground.png",
         "backgroundColor": "#FAFAF9",

@@ -234,6 +234,7 @@ export function DetailView(props: DetailViewProps) {
     try {
       Alert.alert('İndirme Başlatılıyor', 'Video akış kaynağı hazırlanıyor, arka planda güvenle indirilecek.');
       let streamUrl = media.savedStreamUrl || media.StreamUrl;
+      let streamHeaders = media.savedStreamHeaders || {};
       if (!streamUrl) {
         const cleanBaseUrl = (API_BASE_URL || 'https://maxen.sbs').replace(/\/api\/?$/, '').replace(/\/$/, '');
         const directResult = await resolveParallelDirectStreamResult({
@@ -246,6 +247,7 @@ export function DetailView(props: DetailViewProps) {
         });
         if (directResult?.streamUrl) {
           streamUrl = directResult.streamUrl;
+          streamHeaders = directResult.headers || {};
         }
       }
 
@@ -267,6 +269,7 @@ export function DetailView(props: DetailViewProps) {
         posterUrl: media.posterUrl || (media.poster_path ? `https://image.tmdb.org/t/p/w500${media.poster_path}` : null),
         backdropUrl: media.backdropUrl,
         streamUrl,
+        headers: streamHeaders,
       });
     } catch (e: any) {
       Alert.alert('Hata', e.message || 'İndirme başlatılamadı.');
@@ -324,6 +327,7 @@ export function DetailView(props: DetailViewProps) {
           : media.posterUrl || (media.poster_path ? `https://image.tmdb.org/t/p/w500${media.poster_path}` : null),
         backdropUrl: media.backdropUrl,
         streamUrl: directResult.streamUrl,
+        headers: directResult.headers || {},
       });
     } catch (e: any) {
       Alert.alert('Hata', e.message || 'Bölüm indirmesi başlatılamadı.');

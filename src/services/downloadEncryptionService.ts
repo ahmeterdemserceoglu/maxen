@@ -73,10 +73,9 @@ export function transformCipherBytes(
  */
 export async function computeFileChecksum(filePath: string): Promise<string> {
   try {
-    const info = await FileSystem.getInfoAsync(filePath);
-    if (!info.exists || !info.size) return '';
-    // Dosya meta ve boyut karması
-    return simpleHash(`${filePath}_${info.size}_${info.modificationTime || 0}`);
+    const info = await FileSystem.getInfoAsync(filePath, { md5: true });
+    if (!info.exists || !info.size || !info.md5) return '';
+    return `md5:${info.md5}`;
   } catch {
     return '';
   }

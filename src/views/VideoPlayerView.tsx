@@ -35,6 +35,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { saveContinueWatching, getContinueWatchingItem } from '@/services/profileMediaService';
 import { extractCleanTmdbId } from '@/types/profileMedia';
 import { TvLeanbackService } from '@/services/tvLeanbackService';
+import { getDownloadedMedia, verifyDownloadIntegrity } from '@/services/downloadService';
 import { getNextEpisodeCountdownSeconds, withoutStaleEpisodePlayback } from '@/utils/episodePlayback';
 import {
   COMPLETION_THRESHOLD,
@@ -305,6 +306,8 @@ export function VideoPlayerView({
   const activeProviderIndexRef = useRef(0);
   const controlsTimerRef = useRef<any>(null);
   const hasStartedRef = useRef(false);
+  const offlinePlaybackRef = useRef(Boolean(media?.isOfflinePlayback || media?.savedStreamUrl?.startsWith('file://')));
+  const [offlineCheckedKey, setOfflineCheckedKey] = useState<string | null>(null);
   const playbackGenerationGuardRef = useRef<GenerationGuard>(createGenerationGuard());
   const controlsVisibleRef = useRef(controlsVisible);
   controlsVisibleRef.current = controlsVisible;
@@ -1297,6 +1300,12 @@ export function VideoPlayerView({
 
   // ─── PROVIDER DÖNGÜSÜ ─────────────────────────────────────────────
   const tryNextProvider = useCallback(async (force = false) => {
+    if (offlinePlaybackRef.current) {
+      setResolving(false);
+      setLoading(false);
+      setError('İndirilen video oynatılamadı. İndirmeyi kontrol edin veya tekrar indirin.');
+      return;
+    }
     if (Platform.OS === 'web') {
       setResolving(false);
       setLoading(false);
@@ -1465,6 +1474,8 @@ export function VideoPlayerView({
     if (lastActiveMediaKeyRef.current !== currentMediaKey) {
       lastActiveMediaKeyRef.current = currentMediaKey;
       hasStartedRef.current = false;
+      offlinePlaybackRef.current = Boolean(media?.isOfflinePlayback || media?.savedStreamUrl?.startsWith('file://'));
+      setOfflineCheckedKey(null);
       bingeTransitioningRef.current = false;
       isStreamFoundRef.current = false;
       hasSeekedRef.current = false;
@@ -1549,18 +1560,6 @@ export function VideoPlayerView({
     hasStartedRef.current = true;
     isStreamFoundRef.current = false;
 
-    if (externalStreamUrl) {
-      isStreamFoundRef.current = true;
-      streamSessionManager.setSession({
-        streamUrl: externalStreamUrl,
-        provider: 'External',
-        expiresAt: Date.now() + 6 * 60 * 60 * 1000, // Varsayılan 6 saat
-        headers: externalHeaders || {},
-        mediaKey: currentMediaKey,
-      });
-      return;
-    }
-
     // TMDB içerikleri için Backend API & Resolver kullan
     setResolving(true);
     setLoading(true);
@@ -1574,14 +1573,28 @@ export function VideoPlayerView({
       playbackGenerationGuardRef.current.isCurrent(resolutionGen);
 
     async function startStreamResolution() {
+      const downloadKey = isMovie ? `movie_${tmdbId}` : `tv_${tmdbId}_s${seasonNum}_e${episodeNum}`;
+      const explicitOffline = Boolean(media?.isOfflinePlayback || media?.savedStreamUrl?.startsWith('file://'));
+      const downloaded = !isJellyfin && Platform.OS !== 'web' ? await getDownloadedMedia(downloadKey) : null;
+      if (!isActiveResolution()) return;
+      const localUrl = downloaded?.localUri || (explicitOffline ? media?.savedStreamUrl : null);
+      offlinePlaybackRef.current = Boolean(localUrl || explicitOffline);
+      setOfflineCheckedKey(currentMediaKey);
+      if (explicitOffline && !downloaded && !await verifyDownloadIntegrity({ id: downloadKey, localUri: localUrl } as any)) {
+        if (!isActiveResolution()) return;
+        setLoading(false);
+        setResolving(false);
+        setError('İndirilen video eksik veya silinmiş. Lütfen tekrar indirin.');
+        return;
+      }
+      if (!isActiveResolution()) return;
       // 0. Çevrimdışı yerel dosya oynatma kontrolü (Uçak modu / İnternetsiz izleme)
       if (
-        media?.isOfflinePlayback ||
-        (typeof media?.savedStreamUrl === 'string' && media.savedStreamUrl.startsWith('file://'))
+        localUrl
       ) {
         console.log('[Offline-FastPath] 📱 Yerel çevrimdışı dosya doğrudan oynatılıyor:', media.savedStreamUrl);
         streamSessionManager.setSession({
-          streamUrl: media.savedStreamUrl,
+          streamUrl: localUrl,
           provider: 'Offline Local Storage',
           expiresAt: Date.now() + 365 * 24 * 60 * 60 * 1000,
           headers: {},
@@ -1594,6 +1607,13 @@ export function VideoPlayerView({
           clearTimeout(resolverTimeoutRef.current);
           resolverTimeoutRef.current = null;
         }
+        return;
+      }
+
+      if (externalStreamUrl) {
+        isStreamFoundRef.current = true;
+        streamSessionManager.setSession({ streamUrl: externalStreamUrl, provider: 'External',
+          expiresAt: Date.now() + 6 * 60 * 60 * 1000, headers: externalHeaders || {}, mediaKey: currentMediaKey });
         return;
       }
 
@@ -1769,7 +1789,12 @@ export function VideoPlayerView({
       await startStreamResolution();
     });
 
-    startStreamResolution();
+    startStreamResolution().catch((e) => {
+      if (!isActiveResolution()) return;
+      setLoading(false);
+      setResolving(false);
+      setError(e?.message || 'Video kaynağı hazırlanamadı. Lütfen tekrar deneyin.');
+    });
 
     return () => {
       cancelled = true;
@@ -1781,7 +1806,7 @@ export function VideoPlayerView({
   // ─── BAĞIMSIZ TÜRKÇE DUBLAJ YAYINI / SES ÇÖZÜMÜ ────────────────────
   useEffect(() => {
     if (!preferencesLoaded) return;
-    if (media?.isOfflinePlayback) return;
+    if (offlineCheckedKey !== currentMediaKey || offlinePlaybackRef.current) return;
     if (media?.isJellyfin) return;
     if (!tmdbId && !media?.title && !media?.name) return;
 
@@ -1878,7 +1903,7 @@ export function VideoPlayerView({
     return () => {
       isCancelled = true;
     };
-  }, [tmdbId, isMovie, seasonNum, episodeNum, preferencesLoaded, media?.imdb_id, media?.title, media?.name]);
+  }, [tmdbId, isMovie, seasonNum, episodeNum, preferencesLoaded, media?.imdb_id, media?.title, media?.name, offlineCheckedKey, currentMediaKey]);
 
   // ─── EXPO-VIDEO PLAYER ──────────────────────────────────────────
   const player = useVideoPlayer(null, (p) => {
@@ -2044,6 +2069,7 @@ export function VideoPlayerView({
     }
 
     const currentMaster = masterStreamUrlRef.current || streamUrl;
+    if (offlinePlaybackRef.current || currentMaster.startsWith('file://')) return;
     if (currentMaster.includes('.m3u8') || currentMaster.includes('/playlist/')) {
       const qualityGeneration = ++qualityGenerationRef.current;
       const effectiveHeaders: Record<string, string> = {
@@ -2150,6 +2176,12 @@ export function VideoPlayerView({
         hasSeekedRef.current = true;
       } else if (payload?.status === 'error') {
         console.error('Oynatıcı hatası alındı:', payload?.error);
+        if (offlinePlaybackRef.current || streamUrl?.startsWith('file://')) {
+          setLoading(false);
+          setResolving(false);
+          setError('İndirilen video oynatılamadı. Dosya eksik veya bozuk olabilir; tekrar indirin.');
+          return;
+        }
         if (autoRetryCountRef.current < 5) {
           const currentSec = currentTimeRef.current;
           console.log(`[Auto-Retry] Hata algılandı. Yeniden deneniyor (${autoRetryCountRef.current + 1}/5). Kaldığı saniye: ${currentSec}`);
@@ -2602,6 +2634,7 @@ export function VideoPlayerView({
   useEffect(() => {
     if (isJellyfin) return;
     const scanGen = playbackGenerationGuardRef.current.current();
+    if (offlinePlaybackRef.current || streamUrl?.startsWith('file://')) return;
 
     const sources = [
       ...audioTracks

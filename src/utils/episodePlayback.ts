@@ -7,6 +7,7 @@ export function withoutStaleEpisodePlayback(media: Record<string, any>): Record<
     savedStreamUrl: _savedStreamUrl,
     savedStreamHeaders: _savedStreamHeaders,
     preheatedData: _preheatedData,
+    isOfflinePlayback: _isOfflinePlayback,
     progress: _progress,
     durationSeconds: _durationSeconds,
     ...identityAndMetadata
